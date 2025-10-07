@@ -2,10 +2,9 @@ import Image from "next/image";
 
 export default function Home() {
   return (
-    <div className="flex h-screen bg-gradient-to-br from-slate-950 to-slate-900 text-white">
+    <div className="flex flex-col lg:flex-row h-screen bg-gradient-to-br from-slate-950 to-slate-900 text-white">
       {/* LEFT SECTION */}
-      <div className="w-2/5 flex flex-col items-center justify-start bg-slate-950 px-10 py-16 sticky top-0">
-        {/* Profile Image */}
+      <div className="lg:w-2/5 w-full lg:sticky lg:top-0 lg:h-screen flex flex-col items-center justify-center bg-slate-950 p-10">
         <Image
           src="/image/diwan2.png"
           alt="Profile"
@@ -15,13 +14,13 @@ export default function Home() {
         />
 
         {/* Name & Title */}
-        <h1 className="text-5xl font-bold text-teal-100 mb-3">Diwan Purnama</h1>
-        <h2 className="text-xl text-teal-400 font-medium mb-6">
+        <h1 className="text-3xl lg:text-5xl font-bold text-teal-100 mb-3">
+          Diwan Purnama
+        </h1>
+        <h2 className="text-lg lg:text-xl text-teal-400 font-medium mb-6">
           Fullstack Developer
         </h2>
-
-        {/* Short Description */}
-        <p className="text-gray-400 text-lg leading-relaxed text-center">
+        <p className="text-gray-400 text-base lg:text-lg leading-relaxed text-center">
           I build scalable and modern web applications with clean architecture
           and strong focus on performance, usability, and maintainability.
         </p>
@@ -91,7 +90,7 @@ export default function Home() {
               📍 <span className="text-gray-400">Bandung, Indonesia</span>
             </p>
             <p>
-              ✉️{" "}
+              ✉️
               <a
                 href="mailto:diwanprnm77@gmail.com"
                 className="hover:text-teal-400 transition"
@@ -103,8 +102,9 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="w-3/5 overflow-y-scroll px-16 py-20 space-y-16">
-        <section>
+      {/* RIGHT SECTION */}
+      <div className="w-full lg:w-3/5 lg:overflow-y-auto p-8">
+        <section className="mb-20 mt-25">
           <p className="text-gray-400 text-xl leading-relaxed">
             I am a software developer with over one year of experience and a
             strong interest in software development. I am proficient in using
@@ -116,49 +116,50 @@ export default function Home() {
             have strengthened both my technical skills and soft skills.
           </p>
         </section>
-
-        <div className="mt-10 w-full">
-          <h3 className="text-3xl font-bold text-teal-200 mb-8 mt-8">
-            Skills & Tools
-          </h3>
-          <div className="flex flex-wrap gap-3">
-            {[
-              "JavaScript",
-              "TypeScript",
-              "React",
-              "Vue.js",
-              "Next.js",
-              "PHP",
-              "Laravel",
-              "CodeIgniter",
-              "ASP.NET",
-              ".NET Core",
-              "Python",
-              "Flask",
-              "MySQL",
-              "PostgreSQL",
-              "TailwindCSS",
-              "Bootstrap",
-              "Git",
-              "GitHub",
-              "Gitlab",
-              "Docker",
-              "Scrum",
-              "SonarQube",
-              "Jira",
-            ].map((skill) => (
-              <span
-                key={skill}
-                className="px-4 py-2 bg-slate-800 rounded-xl text-gray-300 text-sm hover:bg-slate-700 transition"
-              >
-                {skill}
-              </span>
-            ))}
+        <section className="mb-20">
+          <div className="mt-10 w-full">
+            <h3 className="text-3xl font-bold text-teal-200 mb-8 mt-8">
+              Skills & Tools
+            </h3>
+            <div className="flex flex-wrap gap-3">
+              {[
+                "JavaScript",
+                "TypeScript",
+                "React",
+                "Vue.js",
+                "Next.js",
+                "PHP",
+                "Laravel",
+                "CodeIgniter",
+                "ASP.NET",
+                ".NET Core",
+                "Python",
+                "Flask",
+                "MySQL",
+                "PostgreSQL",
+                "TailwindCSS",
+                "Bootstrap",
+                "Git",
+                "GitHub",
+                "Gitlab",
+                "Docker",
+                "Scrum",
+                "SonarQube",
+                "Jira",
+              ].map((skill) => (
+                <span
+                  key={skill}
+                  className="px-4 py-2 bg-slate-800 rounded-xl text-gray-300 text-sm hover:bg-slate-700 transition"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
+        </section>
 
-        <section>
-          <h3 className="text-3xl font-bold text-teal-200 mb-8 mt-8">
+        <section className="mb-30">
+          <h3 className="text-3xl font-bold text-teal-200 my-8 mt-8">
             Experience
           </h3>
           <div className="space-y-6">
@@ -312,7 +313,7 @@ export default function Home() {
         </section>
         {/* Projects */}
         <section>
-          <h3 className="text-3xl font-bold text-teal-200 mb-8">Projects</h3>
+          <h3 className="text-3xl font-bold text-teal-200 my-8">Projects</h3>
           <div className="grid  gap-8">
             <div className="bg-slate-800 rounded-2xl shadow-xl overflow-hidden hover:shadow-2xl transition-all duration-300">
               <div className="flex flex-col md:flex-row">
