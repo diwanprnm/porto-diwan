@@ -2,35 +2,35 @@ import Image from "next/image";
 
 export default function Home() {
   return (
-    <div className="flex flex-col lg:flex-row h-screen bg-gradient-to-br from-slate-950 to-slate-900 text-white">
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gradient-to-br from-slate-950 to-slate-900 text-white max-w-screen-xl mx-auto">
       {/* LEFT SECTION */}
-      <div className="lg:w-2/5 w-full lg:sticky lg:top-0 lg:h-screen flex flex-col items-center justify-center bg-slate-950 p-10">
+      <div className="lg:w-2/5 w-full lg:sticky lg:top-0 lg:self-start flex flex-col items-center justify-center bg-slate-950 p-10">
         <Image
           src="/image/diwan2.png"
           alt="Profile"
-          width={200}
-          height={200}
-          className="rounded-3xl shadow-2xl mb-8"
+          width={150}
+          height={150}
+          className="rounded-3xl shadow-2xl mb-4"
         />
 
         {/* Name & Title */}
-        <h1 className="text-3xl lg:text-5xl font-bold text-teal-100 mb-3">
+        <h1 className="text-xl lg:text-2xl font-bold text-teal-100 mb-3">
           Diwan Purnama
         </h1>
-        <h2 className="text-lg lg:text-xl text-teal-400 font-medium mb-6">
+        <h2 className="text-sm lg:text-md text-teal-400 font-medium mb-4">
           Fullstack Developer
         </h2>
-        <p className="text-gray-400 text-base lg:text-lg leading-relaxed text-center">
+        <p className="text-gray-400 text-base lg:text-xs leading-relaxed text-center">
           I build scalable and modern web applications with clean architecture
           and strong focus on performance, usability, and maintainability.
         </p>
 
         {/* Education */}
-        <div className="mt-10 w-full">
-          <h3 className="text-teal-300 font-semibold text-lg mb-3">
+        <div className="mt-5 w-full">
+          <h3 className="text-teal-300 font-semibold text-sm mb-3">
             Education
           </h3>
-          <div className="text-gray-300 text-sm leading-relaxed">
+          <div className="text-gray-300 text-xs leading-relaxed">
             <p className="font-medium">Politeknik Negeri Bandung (POLBAN)</p>
             <p>D3 Teknik Informatika</p>
             <p className="text-gray-400">2021 - 2024</p>
@@ -40,8 +40,8 @@ export default function Home() {
         {/* Skills & Tools */}
 
         {/* Socials */}
-        <div className="mt-10 w-full">
-          <h3 className="text-teal-300 font-semibold text-lg mb-3">Socials</h3>
+        <div className="mt-5 w-full">
+          <h3 className="text-teal-300 font-semibold text-sm mb-3">Socials</h3>
           <div className="flex gap-4">
             <a
               href="https://github.com/diwanprnm"
@@ -51,8 +51,8 @@ export default function Home() {
               <Image
                 src="/image/github.png"
                 alt="GitHub"
-                width={30}
-                height={30}
+                width={10}
+                height={10}
               />
             </a>
             <a
@@ -63,8 +63,8 @@ export default function Home() {
               <Image
                 src="/image/instagram.png"
                 alt="Instagram"
-                width={30}
-                height={30}
+                width={10}
+                height={10}
               />
             </a>
             <a
@@ -75,17 +75,17 @@ export default function Home() {
               <Image
                 src="/image/linkedin.png"
                 alt="LinkedIn"
-                width={30}
-                height={30}
+                width={10}
+                height={10}
               />
             </a>
           </div>
         </div>
 
         {/* Contact */}
-        <div className="mt-8 w-full">
-          <h3 className="text-teal-300 font-semibold text-lg mb-3">Contact</h3>
-          <div className="text-gray-300 text-sm space-y-2">
+        <div className="mt-6 w-full">
+          <h3 className="text-teal-300 font-semibold text-sm mb-3">Contact</h3>
+          <div className="text-gray-300 text-xs space-y-2">
             <p>
               📍 <span className="text-gray-400">Bandung, Indonesia</span>
             </p>
@@ -103,9 +103,9 @@ export default function Home() {
       </div>
 
       {/* RIGHT SECTION */}
-      <div className="w-full lg:w-3/5 lg:overflow-y-auto p-8">
-        <section className="mb-20 mt-25">
-          <p className="text-gray-400 text-xl leading-relaxed">
+      <div className="w-full lg:w-3/5 lg:overflow-y-auto p-8 pb-20">
+        <section className="mb-20 mt-10">
+          <p className="text-gray-400 text-md leading-relaxed">
             I am a software developer with over one year of experience and a
             strong interest in software development. I am proficient in using
             frameworks such as Next.js, Laravel, ASP.NET, .NET Core, and
@@ -149,7 +149,7 @@ export default function Home() {
               ].map((skill) => (
                 <span
                   key={skill}
-                  className="px-4 py-2 bg-slate-800 rounded-xl text-gray-300 text-sm hover:bg-slate-700 transition"
+                  className="px-4 py-2 bg-teal-900 rounded-xl text-teal-200text-sm hover:bg-slate-700 transition"
                 >
                   {skill}
                 </span>
