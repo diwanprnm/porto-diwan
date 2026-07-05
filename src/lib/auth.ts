@@ -48,15 +48,22 @@ export async function setAdminCookie(response: NextResponse) {
   const token = await createToken();
   response.cookies.set(TOKEN_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "lax",
     maxAge: TOKEN_MAX_AGE,
     path: "/",
+    // Domain needed for subdomain cookies (e.g. .its.theonezone.my.id)
+    // Will auto-detect from Host header in Next.js 14+
+    domain: process.env.COOKIE_DOMAIN,
   });
   return response;
 }
 
 export async function removeAdminCookie(response: NextResponse) {
-  response.cookies.set(TOKEN_NAME, "", { maxAge: 0, path: "/" });
+  response.cookies.set(TOKEN_NAME, "", {
+    maxAge: 0,
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN,
+  });
   return response;
 }
