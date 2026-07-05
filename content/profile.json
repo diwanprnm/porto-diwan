@@ -1,0 +1,66 @@
+{
+  "profile": {
+    "name": "Diwan Purnama",
+    "title": "Fullstack Developer",
+    "image": "/image/diwan2.png",
+    "bio": "I build scalable and modern web applications with clean architecture and strong focus on performance, usability, and maintainability.",
+    "about": "I am a software developer with over one year of experience and a strong interest in software development. I am proficient in using frameworks such as Next.js, Laravel, ASP.NET, .NET Core, and React.js to build efficient and scalable web applications. I am disciplined, work well in a team, and am accustomed to using Git for version control and collaboration. Over the past year, I have been involved in various web and software development projects, which have strengthened both my technical skills and soft skills.",
+    "contact": {
+      "location": "Bandung, Indonesia",
+      "email": "diwanprnm77@gmail.com"
+    }
+  },
+  "education": {
+    "school": "Politeknik Negeri Bandung (POLBAN)",
+    "degree": "D3 Teknik Informatika",
+    "period": "2021 - 2024"
+  },
+  "skills": [
+    "JavaScript",
+    "TypeScript",
+    "React",
+    "Vue.js",
+    "Next.js",
+    "PHP",
+    "Laravel",
+    "CodeIgniter",
+    "ASP.NET",
+    ".NET Core",
+    "Python",
+    "Flask",
+    "MySQL",
+    "PostgreSQL",
+    "TailwindCSS",
+    "Bootstrap",
+    "Git",
+    "GitHub",
+    "Gitlab",
+    "Docker",
+    "Scrum",
+    "SonarQube",
+    "Jira"
+  ],
+  "socials": [
+    {
+      "platform": "github",
+      "url": "https://github.com/diwanprnm",
+      "icon": "/image/github.png"
+    },
+    {
+      "platform": "instagram",
+      "url": "https://www.instagram.com/yourusername",
+      "icon": "/image/instagram.png"
+    },
+    {
+      "platform": "linkedin",
+      "url": "https://www.linkedin.com/in/yourusername",
+      "icon": "/image/linkedin.png"
+    }
+  ],
+  "experience": [],
+  "projects": [],
+  "__meta": {
+    "version": 2,
+    "updated_at": "2026-07-05T03:53:52.166Z"
+  }
+}
