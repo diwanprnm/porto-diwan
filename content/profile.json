@@ -104,6 +104,7 @@
       "client": "Bandung Regency Government",
       "image": "/image/webdiarvis.png",
       "github_url": "https://github.com/diwanprnm/Diarvis/tree/diwan",
+      "live_url": "",
       "description": [
         "Designed and developed a comprehensive regional asset management web application for Bandung Regency using Laravel.",
         "Built full CRUD workflows for master asset data: create, read, update, delete, and detailed views.",
@@ -116,6 +117,7 @@
       "client": "PT Telkom Indonesia",
       "image": "/image/tth.png",
       "github_url": "https://github.com/diwanprnm/Telkom-Test-House",
+      "live_url": "",
       "description": [
         "Built a web application supporting telecommunication device certification testing workflows at PT Telkom.",
         "Engineered an email-based OTP verification system for secure test-result access.",
@@ -128,6 +130,7 @@
       "client": "PT PLN (State Electricity Company)",
       "image": "/image/rankweb.png",
       "github_url": "https://github.com/diwanprnm/PLN-Successor",
+      "live_url": "",
       "description": [
         "Developed a job promotion management system for PT PLN's internal HR processes using Laravel.",
         "Designed normalized PostgreSQL database schema for promotion tracking and approval workflows.",
@@ -140,6 +143,7 @@
       "client": "POLBAN (Bandung State Polytechnic)",
       "image": "/image/metagama.jpeg",
       "github_url": "",
+      "live_url": "",
       "description": "A web-based administrative system for Metagama's religious mentoring program at POLBAN. Built to digitize participant and group data management — replacing paper-based records with structured CRUD operations. Manages participant registration, group assignments, attendance tracking, and reporting for hundreds of students across multiple mentoring cycles.",
       "skills": ["Laravel", "PHP", "MySQL", "GitLab", "Docker", "Bootstrap"]
     }
