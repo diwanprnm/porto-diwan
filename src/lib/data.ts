@@ -1,5 +1,25 @@
 import { getPool } from "./db";
 
+// Empat fungsi murni tinggal di pure.mjs, bukan di sini, supaya bisa diuji tanpa
+// database dan tanpa framework test (lihat komentar di file itu). Yang penting:
+// hanya ada SATU salinan. Sebelumnya projectSlug disalin di scripts/db.mjs dan
+// descToArray disalin di AdminEditor.tsx — salinan seperti itu menyimpang tanpa
+// ada yang tahu, dan test yang menguji salinan tidak membuktikan apa pun tentang
+// kode yang benar-benar jalan.
+//
+// Nama-nama ini diteruskan ke bawah supaya pemanggil lama (src/app/page.tsx,
+// src/app/projects/[slug]/page.tsx) tidak perlu diubah.
+import {
+  projectSlug,
+  descToArray,
+  groupSkillsByCategory,
+  findProjectBySlug,
+  imageIdFromUrl,
+  imageUrlFromId,
+} from "./pure.mjs";
+
+export { projectSlug, descToArray, groupSkillsByCategory, findProjectBySlug };
+
 export type Skill = {
   name: string;
   category: string;
@@ -66,21 +86,6 @@ export type ProfileData = {
 // Bagian yang disimpan sebagai satu dokumen JSONB di tabel profile_doc.
 // `projects` TIDAK termasuk — itu tabel sendiri.
 type ProfileDoc = Omit<ProfileData, "projects">;
-
-// URL gambar disimpan di dalam data sebagai "/api/images/<id>". Angka id-nya
-// yang dipakai sebagai foreign key, jadi perlu diekstrak balik. Regex ini juga
-// otomatis menolak path lama ("/image/x.png") — hasilnya null, yang berarti
-// "tidak ada gambar".
-function imageIdFromUrl(url: string | undefined | null): number | null {
-  if (!url) return null;
-  const m = url.match(/^\/api\/images\/(\d+)$/);
-  return m ? Number(m[1]) : null;
-}
-
-function imageUrlFromId(id: string | number | null): string {
-  if (id === null) return "";
-  return `/api/images/${id}`;
-}
 
 /**
  * Baca seluruh data CV dari database.
@@ -300,42 +305,4 @@ export async function saveProfileData(data: ProfileData): Promise<number> {
   } finally {
     client.release();
   }
-}
-
-export function groupSkillsByCategory(skills: Skill[]): Record<string, Skill[]> {
-  const groups: Record<string, Skill[]> = {};
-  for (const s of skills) {
-    (groups[s.category] ??= []).push(s);
-  }
-  return groups;
-}
-
-export function descToArray(desc: string | string[]): string[] {
-  if (Array.isArray(desc)) return desc;
-  return [desc];
-}
-
-/**
- * Slug URL dari nama project. Dipakai untuk /projects/[slug].
- *
- * Nama project tidak disimpan sebagai slug terpisah, jadi slug-nya diturunkan
- * dari nama supaya admin tidak perlu mengisi field tambahan. Bagian setelah
- * em-dash dibuang, jadi "Diarvis — Regional Asset Management" jadi "diarvis".
- *
- * Konsekuensi yang perlu diketahui: kalau nama project diubah lewat admin,
- * URL detail-nya ikut berubah, dan link lama ke project itu jadi 404.
- *
- * CATATAN: fungsi ini punya salinan di scripts/db.mjs (script .mjs tidak bisa
- * mengimpor .ts). Kalau aturan slug diubah, ubah dua tempat.
- */
-export function projectSlug(name: string): string {
-  return name
-    .split("—")[0]
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-export function findProjectBySlug(projects: Project[], slug: string): Project | undefined {
-  return projects.find((p) => projectSlug(p.name) === slug);
 }

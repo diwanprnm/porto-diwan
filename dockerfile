@@ -35,6 +35,19 @@ COPY --from=builder /app/content ./content
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/db ./db
 
+# scripts/db.mjs mengimpor projectSlug dari ../src/lib/pure.mjs, jadi file itu
+# HARUS ada di dalam image dengan path yang sama.
+#
+# Tanpa baris ini, `npm run db:migrate` — yang dijalankan setiap deploy oleh
+# scripts/deploy-remote.sh — gagal dengan ERR_MODULE_NOT_FOUND. Perlu diketahui:
+# kegagalan itu TIDAK akan tertangkap smoke test, karena smoke test hanya
+# menembak /healthz dan tidak menjalankan migrasi. Ia baru muncul saat deploy.
+#
+# Hanya file ini yang disalin, bukan seluruh src/: sisa kode aplikasi sudah
+# terbundel ke dalam .next oleh `next build`, jadi menyalin src/ utuh hanya akan
+# menambah ukuran image tanpa dipakai siapa pun.
+COPY --from=builder /app/src/lib/pure.mjs ./src/lib/pure.mjs
+
 EXPOSE 3000
 
 CMD ["npm", "start"]

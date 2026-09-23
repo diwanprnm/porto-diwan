@@ -7,6 +7,7 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test tests/",
     "db:migrate": "node scripts/db.mjs"
   },
   "dependencies": {

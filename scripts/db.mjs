@@ -10,11 +10,29 @@
 // Ditulis .mjs biasa (bukan .ts) supaya bisa dijalankan `node` langsung tanpa
 // perlu tsx/ts-node. Karena itu tipe dari src/lib/data.ts tidak bisa diimpor di
 // sini, dan bentuk data diperlakukan sebagai JSON apa adanya.
+//
+// Aturan yang perlu diuji tetap bisa dipakai bersama: pure.mjs juga .mjs, jadi
+// file itu diimpor langsung (lihat di bawah) tanpa toolchain.
 
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+
+// projectSlug diimpor, bukan disalin. Sebelumnya fungsi ini punya salinan di
+// sini, dan salinan seperti itu menyimpang tanpa ada yang tahu: seed memakai
+// slug sebagai kunci, sementara aplikasi menghitung URL /projects/<slug> dari
+// aturan yang sama. Kalau keduanya berbeda, link ke project jadi 404 tanpa satu
+// pun error muncul di mana pun.
+//
+// Impor lintas bahasa ini bisa karena aturannya tinggal di pure.mjs, bukan .ts —
+// script .mjs tidak bisa memuat TypeScript.
+//
+// PENTING: file ini dijalankan di dalam container (`npm run db:migrate` dipanggil
+// scripts/deploy-remote.sh setiap deploy). Karena itu pure.mjs ikut disalin ke
+// image — lihat dockerfile stage runner. Tanpa itu, migrasi gagal dengan
+// ERR_MODULE_NOT_FOUND, dan kegagalan itu tidak tertangkap smoke test.
+import { projectSlug } from "../src/lib/pure.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -35,17 +53,6 @@ const MIME_BY_EXT = {
   ".gif": "image/gif",
   ".svg": "image/svg+xml",
 };
-
-// SALINAN dari projectSlug() di src/lib/data.ts. URL /projects/[slug] dihitung
-// dari fungsi di sana, jadi kalau aturan slug berubah, dua tempat ini harus
-// diubah bersama. Sengaja disalin karena script .mjs tidak bisa mengimpor .ts.
-function projectSlug(name) {
-  return name
-    .split("—")[0]
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 function log(msg) {
   console.log(msg);

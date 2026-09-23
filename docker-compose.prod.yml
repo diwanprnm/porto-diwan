@@ -1,0 +1,67 @@
+# Compose untuk server produksi dan staging. File yang sama dipakai keduanya.
+#
+# Yang membedakan staging dan produksi bukan file ini, melainkan empat hal yang
+# diberikan saat menjalankan:
+#
+#   -p porto-<env>          → nama project, jadi namespace container/network/
+#                             volume terpisah (lihat catatan di bawah)
+#   --env-file .env.<env>   → rahasia dan port masing-masing environment
+#   APP_PORT                → 3000 (produksi) atau 3001 (staging)
+#   APP_IMAGE               → tag image (git tree hash) yang mau dijalankan
+#
+# Contoh:
+#   docker compose -f docker-compose.prod.yml -p porto-production \
+#     --env-file .env.production up -d
+#
+# Beda dengan docker-compose.yml (yang untuk lokal):
+#
+#   - Port database TIDAK dipublikasikan. Di docker-compose.yml ada
+#     "5432:5432", artinya Postgres terbuka ke seluruh internet kalau server
+#     tidak punya firewall. Di sini `db` hanya bisa dijangkau dari jaringan
+#     internal compose.
+#   - Rahasia dibaca dari .env.<env>, bukan ditulis di file ini.
+#   - Image di-PULL dari Docker Hub, bukan di-build di server.
+#
+# `container_name` sengaja TIDAK dipakai. Compose memberi nama sendiri
+# berdasarkan nama project, sehingga staging dan produksi tidak bentrok, dan
+# service migrasi sekali-pakai (docker compose run) tidak berebut nama dengan
+# container utama yang sedang jalan.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: porto
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD wajib diisi di env file}
+      POSTGRES_DB: porto
+    volumes:
+      # WAJIB. Tanpa ini seluruh isi database — termasuk gambar yang di-upload —
+      # hilang setiap container dibuat ulang.
+      #
+      # Nama volume ini akan berprefix nama project, jadi staging dan produksi
+      # otomatis punya database terpisah.
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Tanpa healthcheck, app bisa start sebelum Postgres siap menerima
+      # koneksi, dan app gagal query di request pertama.
+      test: ["CMD-SHELL", "pg_isready -U porto -d porto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  portfolio:
+    image: ${APP_IMAGE:?APP_IMAGE wajib diisi di env file}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://porto:${POSTGRES_PASSWORD}@db:5432/porto
+      ADMIN_SECRET: ${ADMIN_SECRET:?ADMIN_SECRET wajib diisi di env file}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+    ports:
+      - "${APP_PORT:?APP_PORT wajib diisi di env file}:3000"
+
+volumes:
+  pgdata:

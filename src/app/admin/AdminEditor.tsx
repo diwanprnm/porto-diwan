@@ -9,14 +9,14 @@ import { useState, useEffect, useRef } from "react";
 // `import type` penting di sini: lib/data membaca file lewat "fs", yang tidak boleh
 // ikut ke bundle client. Import tipe dihapus saat build, jadi aman.
 import type { ProfileData, Skill } from "@/lib/data";
-
-// Salinan kecil dari descToArray di lib/data. Sengaja TIDAK diimpor dari sana:
-// lib/data.ts memakai "fs" (baca file di server), dan value import dari file itu
-// di dalam Client Component akan menarik "fs" ke bundle browser. `import type`
-// di atas aman karena dihapus saat build, tapi value import tidak.
-function descToArray(desc: string | string[]): string[] {
-  return Array.isArray(desc) ? desc : [desc];
-}
+// descToArray diimpor dari pure.mjs, bukan disalin seperti sebelumnya.
+//
+// Komentar lama di sini menyebut alasan menyalin: lib/data.ts memakai "fs",
+// dan value import dari file itu akan menarik "fs" ke bundle browser. Alasan itu
+// benar untuk data.ts — tapi tidak berlaku untuk pure.mjs, yang tidak
+// mengimpor apa pun. Jadi sekarang salinannya tidak perlu ada, dan fungsinya
+// ikut terjaga oleh tests/pure.test.mjs.
+import { descToArray } from "@/lib/pure.mjs";
 
 /**
  * Membersihkan array yang diedit sebagai teks: buang spasi ujung dan elemen
