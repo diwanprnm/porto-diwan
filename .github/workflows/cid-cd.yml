@@ -24,7 +24,7 @@ jobs:
                   node-version: 22
                   cache: npm
             - run: npm ci
-            - run: npm lint
+            - run: npm run lint
             - run: npx tsc --noEmit
 
     test:
@@ -49,7 +49,7 @@ jobs:
             - uses: actions/dependency-review-action@v4
 
     build-push:
-        name: Build and push image\
+        name: Build and push image
         needs: test
         if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
         runs-on: ubuntu-latest
