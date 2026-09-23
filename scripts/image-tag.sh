@@ -36,7 +36,7 @@
 # DOCKERHUB_USERNAME dibaca dari environment, bukan dari argumen, supaya
 # pemanggilnya di YAML bisa memakai pola `env:` yang sama dengan langkah login,
 # dan tidak ada nama akun yang perlu di-escape di dalam teks perintah.
-#tambah
+#disini tambah
 set -euo pipefail
 
 TREE=$(git rev-parse "HEAD^{tree}")
