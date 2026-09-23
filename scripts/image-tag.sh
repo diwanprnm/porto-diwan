@@ -37,6 +37,7 @@
 # pemanggilnya di YAML bisa memakai pola `env:` yang sama dengan langkah login,
 # dan tidak ada nama akun yang perlu di-escape di dalam teks perintah.
 #tambah
+# ini juga tambah
 set -euo pipefail
 
 TREE=$(git rev-parse "HEAD^{tree}")
