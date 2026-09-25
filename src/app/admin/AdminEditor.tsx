@@ -203,11 +203,10 @@ export default function AdminEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      const r = res.ok ? await res.json() : await res.json();
       if (res.ok) {
-        const r = await res.json();
         setMsg({ type: "ok", text: `✓ Saved (v${r.version}). Halaman CV sudah di-update.` });
       } else {
-        const r = await res.json();
         setMsg({ type: "err", text: r.error || "Gagal menyimpan" });
       }
     } catch {
@@ -221,23 +220,12 @@ export default function AdminEditor() {
     window.location.reload();
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        Loading...
-      </div>
-    );
-  }
-  if (!data) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-        Failed to load.
-      </div>
-    );
-  }
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">Loading...</div>;
+  if (!data) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">Gagal memuat data.</div>;
 
-  // Helpers update
-  const updateProfile = (k: string, v: string) =>
+  // ── Setters ──
+  const set = <K extends keyof ProfileData>(k: K, v: ProfileData[K]) => setData({ ...data, [k]: v });
+  const setProfile = (k: keyof ProfileData["profile"], v: string) =>
     setData({ ...data, profile: { ...data.profile, [k]: v } });
   // contact ada di root ProfileData, bukan di dalam profile.
   const updateContact = (k: string, v: string) =>
@@ -282,16 +270,9 @@ export default function AdminEditor() {
     socials[i] = { ...socials[i], [k]: v };
     setData({ ...data, socials });
   };
-  const addSocial = () =>
-    setData({
-      ...data,
-      socials: [...data.socials, { platform: "", url: "", icon: "" }],
-    });
-  const removeSocial = (i: number) =>
-    setData({ ...data, socials: data.socials.filter((_, idx) => idx !== i) });
 
   // Experience
-  const updateExp = (i: number, k: string, v: string) => {
+  const setExp = (i: number, k: keyof Experience, v: string | string[]) => {
     const exp = [...data.experience];
     exp[i] = { ...exp[i], [k]: v };
     setData({ ...data, experience: exp });
@@ -331,7 +312,7 @@ export default function AdminEditor() {
     setData({ ...data, experience: data.experience.filter((_, idx) => idx !== i) });
 
   // Projects
-  const updateProj = (i: number, k: string, v: string) => {
+  const setProj = (i: number, k: keyof Project, v: string | string[]) => {
     const proj = [...data.projects];
     proj[i] = { ...proj[i], [k]: v };
     setData({ ...data, projects: proj });
@@ -367,17 +348,29 @@ export default function AdminEditor() {
   const removeProj = (i: number) =>
     setData({ ...data, projects: data.projects.filter((_, idx) => idx !== i) });
 
-  // Input style
+  // Socials
+  const setSocial = (i: number, k: keyof Social, v: string) => {
+    const s = [...data.socials];
+    s[i] = { ...s[i], [k]: v };
+    setData({ ...data, socials: s });
+  };
+  const addSocial = () =>
+    setData({ ...data, socials: [...data.socials, { platform: "", url: "", icon: "" }] });
+  const removeSocial = (i: number) =>
+    setData({ ...data, socials: data.socials.filter((_, idx) => idx !== i) });
+
+  // Styles
   const input = "w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-teal-500";
-  const label = "block text-xs text-gray-400 mb-1 mt-3";
+  const label = "block text-xs text-gray-400 mb-1 mt-3 font-medium";
   const card = "bg-slate-800/50 rounded-xl p-4 border border-slate-700";
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-teal-100">Admin Editor — CV</h1>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-teal-100">✏️ Admin Editor — CV</h1>
           <div className="flex gap-2">
             <a href="/" target="_blank" className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg">View Site →</a>
             <button onClick={logout} className="px-3 py-1.5 text-sm bg-red-900 hover:bg-red-800 rounded-lg">Logout</button>
@@ -393,11 +386,8 @@ export default function AdminEditor() {
           >
             {saving ? "Menyimpan..." : "Save"}
           </button>
-          {msg && (
-            <span className={msg.type === "ok" ? "text-teal-300 text-sm" : "text-red-300 text-sm"}>
-              {msg.text}
-            </span>
-          )}
+          {msg && <span className={`text-sm ${msg.type === "ok" ? "text-teal-300" : "text-red-300"}`}>{msg.text}</span>}
+          <span className="ml-auto text-xs text-gray-500">v{data.__meta?.version || "?"} · {data.__meta?.updated_at ? new Date(data.__meta.updated_at).toLocaleString() : ""}</span>
         </div>
 
         {/* Profile section */}
@@ -423,14 +413,26 @@ export default function AdminEditor() {
         </section>
 
         {/* Education */}
-        <section className={card + " mb-4"}>
-          <h2 className="text-lg font-semibold text-teal-200 mb-3">Education</h2>
-          <label className={label}>School</label>
-          <input className={input} value={data.education.school} onChange={(e) => updateEducation("school", e.target.value)} />
-          <label className={label}>Degree</label>
-          <input className={input} value={data.education.degree} onChange={(e) => updateEducation("degree", e.target.value)} />
-          <label className={label}>Period</label>
-          <input className={input} value={data.education.period} onChange={(e) => updateEducation("period", e.target.value)} />
+        <section className={card + " mt-4"}>
+          <h2 className="text-base font-semibold text-teal-200 mb-3">🎓 Education</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className={label}>School</label>
+              <input className={input} value={data.education.school} onChange={(e) => setEdu("school", e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>Period</label>
+              <input className={input} value={data.education.period} onChange={(e) => setEdu("period", e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>Degree</label>
+              <input className={input} value={data.education.degree} onChange={(e) => setEdu("degree", e.target.value)} />
+            </div>
+            <div>
+              <label className={label}>GPA (optional)</label>
+              <input className={input} value={data.education.gpa} onChange={(e) => setEdu("gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
+            </div>
+          </div>
         </section>
 
         {/* Skills */}
@@ -455,9 +457,9 @@ export default function AdminEditor() {
         </section>
 
         {/* Socials */}
-        <section className={card + " mb-4"}>
+        <section className={card + " mt-4"}>
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-semibold text-teal-200">Socials</h2>
+            <h2 className="text-base font-semibold text-teal-200">🔗 Socials</h2>
             <button onClick={addSocial} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
           </div>
           {data.socials.map((s, i) => (
@@ -483,15 +485,15 @@ export default function AdminEditor() {
         </section>
 
         {/* Experience */}
-        <section className={card + " mb-4"}>
+        <section className={card + " mt-4"}>
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-semibold text-teal-200">Experience</h2>
+            <h2 className="text-base font-semibold text-teal-200">💼 Experience</h2>
             <button onClick={addExp} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
           </div>
           {data.experience.map((exp, i) => (
             <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
-              <div className="flex justify-between">
-                <span className="text-xs text-gray-500">#{i + 1}</span>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-gray-500 font-mono">#{i + 1}</span>
                 <button onClick={() => removeExp(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
               </div>
               <label className={label}>Period</label>
@@ -520,9 +522,9 @@ export default function AdminEditor() {
         </section>
 
         {/* Projects */}
-        <section className={card + " mb-4"}>
+        <section className={card + " mt-4"}>
           <div className="flex justify-between items-center mb-3">
-            <h2 className="text-lg font-semibold text-teal-200">Projects</h2>
+            <h2 className="text-base font-semibold text-teal-200">🚀 Projects</h2>
             <button onClick={addProj} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
           </div>
           {data.projects.map((proj, i) => {
@@ -532,8 +534,8 @@ export default function AdminEditor() {
             const descArr = descToArray(proj.description).join(DESC_SEP);
             return (
               <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
-                <div className="flex justify-between">
-                  <span className="text-xs text-gray-500">#{i + 1}</span>
+                <div className="flex justify-between mb-2">
+                  <span className="text-xs text-gray-500 font-mono">#{i + 1}</span>
                   <button onClick={() => removeProj(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
                 </div>
                 <label className={label}>Name</label>
@@ -575,7 +577,6 @@ export default function AdminEditor() {
           <button onClick={save} disabled={saving} className="px-5 py-2 bg-teal-700 hover:bg-teal-600 rounded-lg text-sm font-medium disabled:opacity-50">
             {saving ? "Menyimpan..." : "Save"}
           </button>
-          <span className="text-xs text-gray-500 self-center">v{data.__meta?.version || "?"} · {data.__meta?.updated_at || ""}</span>
         </div>
       </div>
     </div>

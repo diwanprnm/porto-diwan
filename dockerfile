@@ -27,6 +27,12 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/content ./content
+
+# Generate admin secret on container start if not set
+RUN if [ -z "$ADMIN_SECRET" ]; then \
+      echo "ADMIN_SECRET=$(openssl rand -hex 32)" >> .env; \
+    fi
 
 # Dibutuhkan oleh `npm run db:migrate` di dalam container. Sebelumnya content/
 # tidak ikut disalin, sehingga process.cwd()/content/profile.json tidak ada dan
