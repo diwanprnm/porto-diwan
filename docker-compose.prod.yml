@@ -59,7 +59,11 @@ services:
     environment:
       DATABASE_URL: postgres://porto:${POSTGRES_PASSWORD}@db:5432/porto
       ADMIN_SECRET: ${ADMIN_SECRET:?ADMIN_SECRET wajib diisi di env file}
-      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH}
+      # Tanpa `:?`, nilai yang kosong/hilang lolos diam-diam ke container, lalu
+      # aplikasi jatuh ke fallback "admin123" (lihat src/lib/auth.ts) — password
+      # default yang diketahui umum, aktif tanpa ada yang menyadarinya. Dengan
+      # `:?`, compose menolak start dan menyebut variabelnya.
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:?ADMIN_PASSWORD_HASH wajib diisi di env file}
     ports:
       - "${APP_PORT:?APP_PORT wajib diisi di env file}:3000"
 
