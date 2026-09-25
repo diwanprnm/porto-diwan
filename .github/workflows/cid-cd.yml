@@ -220,8 +220,33 @@ jobs:
                   IMAGE: ${{ steps.meta.outputs.image }}
                   DIGEST: ${{ steps.build.outputs.digest }}
               run: |
-                  echo "pinned=${IMAGE%:*}@${DIGEST}" >> "$GITHUB_OUTPUT"
-                  echo "Pinned: ${IMAGE%:*}@${DIGEST}"
+                  # Kedua nilai ini datang dari langkah lain. Kalau salah satunya
+                  # kosong, referensi yang dihasilkan tidak sah — "repo@" atau
+                  # "@sha256:...". Diperiksa DI SINI, bukan diserahkan ke
+                  # `docker run`: docker melaporkannya sebagai "invalid reference
+                  # format", pesan yang menunjuk ke Docker padahal sebabnya output
+                  # job yang kosong, jadi orang mencari di tempat yang salah.
+                  if [ -z "$IMAGE" ]; then
+                    echo "✗ GAGAL: 'image' kosong."
+                    echo
+                    echo "Langkah 'id: meta' tidak menghasilkan nama image. Periksa"
+                    echo "output langkah itu di log di atas — biasanya karena"
+                    echo "DOCKERHUB_USERNAME belum di-set sebagai repository secret."
+                    exit 1
+                  fi
+
+                  if [ -z "$DIGEST" ]; then
+                    echo "✗ GAGAL: 'digest' kosong — image tidak ter-push."
+                    echo
+                    echo "Penyebab paling umum: 'tags:' tidak di-set di langkah"
+                    echo "'id: build', sehingga build-push-action tidak punya tag"
+                    echo "untuk di-push dan digest tidak pernah terisi."
+                    exit 1
+                  fi
+
+                  PINNED="${IMAGE%:*}@${DIGEST}"
+                  echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
+                  echo "Pinned: $PINNED"
 
     # ── 5. Smoke test ──────────────────────────────────────────────────────────
     # Menjalankan image yang baru dibangun, sungguhan, lalu menembak /healthz.
@@ -269,6 +294,28 @@ jobs:
               env:
                   PINNED: ${{ needs.build.outputs.pinned }}
               run: |
+                  # Referensi yang sah selalu berbentuk "repo@sha256:...".
+                  # Diperiksa di sini, bukan diserahkan ke `docker run`: kalau
+                  # nilainya kosong atau cacat ("repo@"), docker hanya bilang
+                  # "invalid reference format" — pesan yang menunjuk ke Docker
+                  # padahal sebabnya output job yang tidak terisi.
+                  case "$PINNED" in
+                    *@sha256:*)
+                      ;;
+                    *)
+                      echo "✗ GAGAL: referensi image tidak sah: '$PINNED'"
+                      echo
+                      if [ -z "$PINNED" ]; then
+                        echo "Nilainya KOSONG. Kalau job ini dijalankan ulang sendirian"
+                        echo "('Re-run job'), output job build tidak tersedia — jalankan"
+                        echo "ulang seluruh workflow ('Re-run all jobs'), bukan job ini."
+                      else
+                        echo "Nilainya tidak memuat '@sha256:'. Artinya langkah 'id: pin'"
+                        echo "di job build menghasilkan referensi yang cacat."
+                      fi
+                      exit 1
+                      ;;
+                  esac
                   docker run -d --name uji -p 3000:3000 "$PINNED"
 
             # Loop, bukan `sleep 10` lalu satu curl.
