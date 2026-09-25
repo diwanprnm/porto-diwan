@@ -21,7 +21,7 @@ ENV_NAME="$1"
 IMAGE="$2"
 RECORD_TREE="${3:-}"
 
-cd ~/porto
+cd /var/www/my-app/porto
 
 # `-p` (nama project) menentukan namespace container, network, DAN volume.
 # Karena itu staging dan produksi tidak saling menyentuh walau satu server:

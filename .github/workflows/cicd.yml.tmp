@@ -122,7 +122,7 @@ jobs:
       # kali hanya untuk laporan yang sama. Kalau mau melihatnya, jalankan di
       # lokal:
       #
-      #   node --test --experimental-test-coverage tests/
+      #   node --test --experimental-test-coverage
       #
       # Cakupan juga sengaja BUKAN ambang batas. Angka mudah jadi gerbang yang
       # dilemahkan: begitu ia menghalangi merge, yang dilakukan orang adalah
@@ -389,11 +389,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `target: porto` relatif terhadap home user SSH, jadi mendarat di
-      # ~/porto. scp-action membuat direktorinya sendiri kalau belum ada.
+      # `target: /var/www/my-app/porto` absolut, jadi file mendarat persis di situ —
+      # bukan di bawah home user SSH. scp-action membuat direktorinya sendiri
+      # kalau belum ada, tapi user SSH harus punya izin tulis ke /var/www
+      # (lihat README bagian setup server).
       #
       # Struktur di server mengikuti sumbernya di repo: compose file di
-      # ~/porto/docker-compose.prod.yml, skrip di ~/porto/scripts/deploy-remote.sh.
+      # /var/www/my-app/porto/docker-compose.prod.yml, skrip di
+      # /var/www/my-app/porto/scripts/deploy-remote.sh.
       #
       # deploy-ledger.sh ikut dikirim karena dipanggil oleh deploy-remote.sh
       # setelah health check lulus, untuk mencatat digest ke ledger.
@@ -408,7 +411,7 @@ jobs:
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: docker-compose.prod.yml,scripts/deploy-remote.sh,scripts/deploy-ledger.sh
-          target: porto
+          target: /var/www/my-app/porto
 
       # ENV_NAME dan IMAGE dikirim lewat `envs`, bukan disisipkan ke dalam teks
       # `script`. Nilainya jadi variabel lingkungan di sisi server, jadi tidak
@@ -449,11 +452,11 @@ jobs:
           envs: ENV_NAME,IMAGE,TREE
           script: |
             set -e
-            tr -d '\r' < ~/porto/scripts/deploy-remote.sh > ~/porto/scripts/deploy-remote.sh.tmp
-            mv ~/porto/scripts/deploy-remote.sh.tmp ~/porto/scripts/deploy-remote.sh
-            tr -d '\r' < ~/porto/scripts/deploy-ledger.sh > ~/porto/scripts/deploy-ledger.sh.tmp
-            mv ~/porto/scripts/deploy-ledger.sh.tmp ~/porto/scripts/deploy-ledger.sh
-            bash ~/porto/scripts/deploy-remote.sh "$ENV_NAME" "$IMAGE" "$TREE"
+            tr -d '\r' < /var/www/my-app/porto/scripts/deploy-remote.sh > /var/www/my-app/porto/scripts/deploy-remote.sh.tmp
+            mv /var/www/my-app/porto/scripts/deploy-remote.sh.tmp /var/www/my-app/porto/scripts/deploy-remote.sh
+            tr -d '\r' < /var/www/my-app/porto/scripts/deploy-ledger.sh > /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp
+            mv /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp /var/www/my-app/porto/scripts/deploy-ledger.sh
+            bash /var/www/my-app/porto/scripts/deploy-remote.sh "$ENV_NAME" "$IMAGE" "$TREE"
 
   # ── 8. Preflight produksi ──────────────────────────────────────────────────
   # Gerbang sebelum approval: memastikan artefak untuk isi commit di main ini
@@ -516,7 +519,7 @@ jobs:
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: scripts/deploy-ledger.sh
-          target: porto
+          target: /var/www/my-app/porto
 
       # Exit code dari skrip ini yang menentukan hijau/merah. Tidak ada nilai yang
       # perlu dibaca kembali dari server: yang dibutuhkan hanya "ada" atau
@@ -532,16 +535,16 @@ jobs:
           envs: TREE
           script: |
             set -e
-            tr -d '\r' < ~/porto/scripts/deploy-ledger.sh > ~/porto/scripts/deploy-ledger.sh.tmp
-            mv ~/porto/scripts/deploy-ledger.sh.tmp ~/porto/scripts/deploy-ledger.sh
-            if bash ~/porto/scripts/deploy-ledger.sh lookup "$TREE" >/dev/null 2>&1; then
+            tr -d '\r' < /var/www/my-app/porto/scripts/deploy-ledger.sh > /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp
+            mv /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp /var/www/my-app/porto/scripts/deploy-ledger.sh
+            if bash /var/www/my-app/porto/scripts/deploy-ledger.sh lookup "$TREE" >/dev/null 2>&1; then
               echo "✓ Ledger punya entri untuk $TREE"
               exit 0
             fi
             echo "✗ GAGAL: isi commit ini belum pernah di-deploy ke staging."
             echo
             echo "  tree hash : $TREE"
-            echo "  ledger    : ~/porto/.deploy-map"
+            echo "  ledger    : /var/www/my-app/porto/.deploy-map"
             echo
             echo "Artinya kode di main ini belum pernah berjalan di staging, jadi"
             echo "tidak ada jaminan apa pun bahwa ia layak ke produksi."
@@ -590,7 +593,7 @@ jobs:
           username: ${{ secrets.VPS_SSH_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: docker-compose.prod.yml,scripts/deploy-remote.sh,scripts/deploy-ledger.sh
-          target: porto
+          target: /var/www/my-app/porto
 
       # `lookup` dijalankan DI SINI, bukan diteruskan sebagai output dari
       # preflight-production. Alasannya: ledger bisa diperbarui antara preflight
@@ -620,19 +623,19 @@ jobs:
           envs: ENV_NAME,TREE
           script: |
             set -e
-            tr -d '\r' < ~/porto/scripts/deploy-remote.sh > ~/porto/scripts/deploy-remote.sh.tmp
-            mv ~/porto/scripts/deploy-remote.sh.tmp ~/porto/scripts/deploy-remote.sh
-            tr -d '\r' < ~/porto/scripts/deploy-ledger.sh > ~/porto/scripts/deploy-ledger.sh.tmp
-            mv ~/porto/scripts/deploy-ledger.sh.tmp ~/porto/scripts/deploy-ledger.sh
+            tr -d '\r' < /var/www/my-app/porto/scripts/deploy-remote.sh > /var/www/my-app/porto/scripts/deploy-remote.sh.tmp
+            mv /var/www/my-app/porto/scripts/deploy-remote.sh.tmp /var/www/my-app/porto/scripts/deploy-remote.sh
+            tr -d '\r' < /var/www/my-app/porto/scripts/deploy-ledger.sh > /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp
+            mv /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp /var/www/my-app/porto/scripts/deploy-ledger.sh
 
-            if ! IMAGE="$(bash ~/porto/scripts/deploy-ledger.sh lookup "$TREE")"; then
+            if ! IMAGE="$(bash /var/www/my-app/porto/scripts/deploy-ledger.sh lookup "$TREE")"; then
               echo "✗ GAGAL: ledger tidak punya entri untuk $TREE."
               echo
               echo "Job preflight seharusnya sudah menangkap ini. Kalau kamu melihat"
               echo "pesan ini, entri ledger terhapus atau berubah di antara preflight"
-              echo "dan deploy. Periksa ~/porto/.deploy-map di server."
+              echo "dan deploy. Periksa /var/www/my-app/porto/.deploy-map di server."
               exit 1
             fi
 
             echo "→ Ledger: $TREE → $IMAGE"
-            bash ~/porto/scripts/deploy-remote.sh "$ENV_NAME" "$IMAGE"
+            bash /var/www/my-app/porto/scripts/deploy-remote.sh "$ENV_NAME" "$IMAGE"
