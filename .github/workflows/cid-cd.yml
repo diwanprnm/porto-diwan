@@ -683,6 +683,7 @@ jobs:
             # untuk tree hash kosong. Nilai ini deterministik dari isi commit, jadi
             # menghitungnya ulang selalu memberi hasil yang sama dengan yang
             # diterbitkan preflight — tanpa bergantung pada job itu baru saja jalan.
+            # tambah
             - name: Tentukan tree hash
               id: meta
               env:
