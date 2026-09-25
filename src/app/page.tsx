@@ -1,7 +1,14 @@
 import Image from "next/image";
-import { getProfileData, groupSkillsByCategory, descToArray } from "@/lib/data";
+import Link from "next/link";
+import SectionNav from "./SectionNav";
+import {
+  getProfileData,
+  groupSkillsByCategory,
+  descToArray,
+  projectSlug,
+} from "@/lib/data";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 // Label mapping untuk kategori skill (lebih rapi)
 const CAT_LABELS: Record<string, string> = {
@@ -14,6 +21,18 @@ const CAT_LABELS: Record<string, string> = {
 
 // Order kategori
 const CAT_ORDER = ["language", "framework", "database", "devops", "concept"];
+
+// Lebar tile per kategori. Peta tetap, disusun supaya kolomnya genap 12:
+// 5+7 lalu 3+6+3. Kategori yang isinya lebih banyak dapat kolom lebih lebar.
+// Kalau isi skill berubah lewat admin, tile-nya tetap aman, cuma bisa
+// menyisakan kolom kosong di baris terakhir.
+const CAT_SPAN: Record<string, string> = {
+  language: "lg:col-span-5",
+  framework: "lg:col-span-7",
+  database: "lg:col-span-3",
+  devops: "lg:col-span-6",
+  concept: "lg:col-span-3",
+};
 
 export default async function Home() {
   const data = await getProfileData();
@@ -32,6 +51,10 @@ export default async function Home() {
               alt={profile.name}
               width={140}
               height={140}
+              // Gambar disajikan dari /api/images/[id] dengan cache immutable.
+              // Optimizer Next dilewati supaya isinya tidak diambil ulang tiap
+              // request — lihat catatan di src/lib/db.ts dan api/images/[id].
+              unoptimized
               className="rounded-2xl shadow-xl ring-2 ring-teal-500/20"
             />
             <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-teal-500 rounded-full border-2 border-slate-950" />
@@ -49,6 +72,10 @@ export default async function Home() {
         <p className="mt-5 text-slate-400 text-sm leading-relaxed text-center px-2">
           {profile.bio}
         </p>
+
+        {/* Section nav — rail. Sticky sidebar keeps it on screen while the
+            content column scrolls, so it doubles as a reading position. */}
+        <SectionNav variant="rail" />
 
         {/* Education */}
         <div className="mt-8">
@@ -99,6 +126,7 @@ export default async function Home() {
                   alt={s.platform}
                   width={18}
                   height={18}
+                  unoptimized
                   className="opacity-60 group-hover:opacity-100 transition-opacity"
                 />
               </a>
@@ -130,8 +158,12 @@ export default async function Home() {
 
       {/* ── RIGHT CONTENT ── */}
       <main className="flex-1 lg:overflow-y-auto p-6 md:p-10 lg:p-12">
+        {/* Section nav — bar. Below `lg` the sidebar scrolls away with the
+            page, so the nav re-appears pinned to the top of the column. */}
+        <SectionNav variant="bar" />
+
         {/* About */}
-        <section className="mb-16">
+        <section id="about" className="mb-16 scroll-mt-20">
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
             About
@@ -141,29 +173,43 @@ export default async function Home() {
           </p>
         </section>
 
-        {/* Skills — grouped by category */}
-        <section className="mb-16">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-            <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-            Skills & Tools
-          </h3>
-          <div className="space-y-5">
-            {CAT_ORDER.map((cat) => {
+        {/* Skills — bento grid, lebar tile mengikuti jumlah isi */}
+        <section id="skills" className="mb-16 scroll-mt-20">
+          <div className="mb-6 flex items-baseline justify-between gap-4">
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+              Skills & Tools
+            </h3>
+            <span className="text-xs text-slate-500 tabular-nums">
+              {skills.length} total
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+            {CAT_ORDER.map((cat, idx) => {
               const items = skillGroups[cat];
               if (!items || items.length === 0) return null;
               return (
-                <div key={cat}>
-                  <h4 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
-                    {CAT_LABELS[cat] || cat}
-                  </h4>
-                  <div className="flex flex-wrap gap-2">
+                <div
+                  key={cat}
+                  className={`reveal reveal-d${(idx % 3) + 1} ${CAT_SPAN[cat]} h-full rounded-xl border border-slate-800 bg-slate-900/40 p-5 hover:border-teal-500/30`}
+                >
+                  <div className="flex items-baseline justify-between gap-3 mb-3">
+                    <h4 className="text-xs font-semibold uppercase tracking-widest text-teal-400">
+                      {CAT_LABELS[cat] || cat}
+                    </h4>
+                    <span className="text-xs text-slate-600 tabular-nums">
+                      {items.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
                     {items.map((s) => (
-                                          <span
-                                            key={s.name}
-                                            className="px-3 py-1.5 bg-slate-800/80 border border-slate-700 rounded-lg text-slate-300 text-sm hover:border-teal-500/50 hover:text-teal-200 transition-all"
-                                          >
-                                            {s.name}
-                                          </span>
+                      <span
+                        key={s.name}
+                        className="px-2.5 py-1 bg-slate-800/60 border border-slate-700/70 rounded-md text-slate-300 text-sm transition-colors hover:border-teal-500/50 hover:text-teal-200"
+                      >
+                        {s.name}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -173,7 +219,7 @@ export default async function Home() {
         </section>
 
         {/* Experience — Timeline */}
-        <section className="mb-16">
+        <section id="experience" className="mb-16 scroll-mt-20">
           <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3">
             <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
             Experience
@@ -181,11 +227,11 @@ export default async function Home() {
           <div className="space-y-0">
             <div className="relative pl-8 border-l border-slate-700">
               {experience.map((exp, idx) => (
-                <div key={idx} className="mb-10 relative group">
+                <div key={idx} className="reveal tl-item mb-10 relative group">
                   {/* Timeline dot */}
-                  <div className="absolute -left-[41px] w-3 h-3 rounded-full border-2 border-slate-700 bg-slate-900 group-hover:bg-teal-500 group-hover:border-teal-500 transition-colors" />
+                  <div className="tl-dot absolute -left-[41px] w-3 h-3 rounded-full border-2 border-slate-700 bg-slate-900" />
 
-                  <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-800 hover:border-teal-500/30 transition-all">
+                  <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-800 hover:border-teal-500/30 transition-colors">
                     <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1 mb-2">
                       <div>
                         <h4 className="text-base font-semibold text-white">
@@ -220,66 +266,133 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Projects */}
-        <section className="mb-16">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-            <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-            Projects
-          </h3>
-          <div className="grid gap-6">
-            {projects.map((proj) => (
-              <div key={proj.name} className="bg-slate-900/50 rounded-2xl border border-slate-800 overflow-hidden hover:border-teal-500/30 transition-all group">
-                <div className="flex flex-col md:flex-row">
-                  {/* Project image */}
-                  <div className="md:w-[280px] shrink-0 bg-slate-950 flex flex-col items-center justify-center p-6 border-b md:border-b-0 md:border-r border-slate-800">
-                    <Image
-                      src={proj.image}
-                      alt={proj.name}
-                      width={300}
-                      height={200}
-                      className="rounded-lg object-contain group-hover:scale-[1.02] transition-transform duration-300"
-                    />
-                    {proj.github_url && (
-                      <a
-                        href={proj.github_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-teal-900/60 text-teal-300 text-sm rounded-lg transition-colors border border-slate-700 hover:border-teal-500/50"
-                      >
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1.1 1.5 1.1.9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.4 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.2-2.6 5.1-5.1 5.4.4.4.7 1 .7 2v2.9c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.65 18.35.5 12 .5z" />
-                        </svg>
-                        <span>View Code</span>
-                      </a>
-                    )}
-                  </div>
+        {/* Projects — card ringkas: screenshot, nama, client, satu kalimat
+            deskripsi, stack utama, plus tombol Live/Repo. Detail lengkap ada di
+            /projects/[slug]. Seluruh bagian atas card menuju halaman detail. */}
+        <section id="projects" className="mb-16 scroll-mt-20">
+          <div className="mb-6 flex items-baseline justify-between gap-4">
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+              Projects
+            </h3>
+            <span className="text-xs text-slate-500 tabular-nums">
+              {projects.length} shipped
+            </span>
+          </div>
 
-                  {/* Project details */}
-                  <div className="flex-1 p-6 flex flex-col justify-center">
-                    <h4 className="text-lg font-bold text-white">{proj.name}</h4>
-                    {proj.client && (
-                      <p className="text-xs text-teal-400 mt-0.5">{proj.client}</p>
-                    )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {projects.map((proj, idx) => {
+              // Card cuma menampilkan 3 teknologi pertama; sisanya jadi "+N".
+              const shown = proj.skills.slice(0, 3);
+              const rest = proj.skills.length - shown.length;
+              const href = `/projects/${projectSlug(proj.name)}`;
+              const teaser = descToArray(proj.description)[0];
+              // Ada baris tombol atau tidak menentukan padding bawah: tanpa
+              // tombol, blok teks yang harus menutup kartu.
+              const hasActions = Boolean(proj.live_url || proj.github_url);
 
-                    <ul className="mt-3 space-y-1">
-                      {descToArray(proj.description).map((d, i) => (
-                        <li key={i} className="text-sm text-slate-400 pl-4 relative before:content-['▸'] before:absolute before:left-0 before:text-teal-500">
-                          {d}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="flex flex-wrap gap-1.5 mt-4">
-                      {proj.skills.map((skill) => (
-                        <span key={skill} className="px-2 py-0.5 bg-teal-950/50 border border-teal-900/30 rounded text-teal-300 text-xs">
-                          {skill}
-                        </span>
-                      ))}
+              return (
+                <article
+                  key={proj.name}
+                  className={`reveal reveal-d${(idx % 3) + 1} proj-card group flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden`}
+                >
+                  {/* Bagian yang bisa diklik menuju halaman detail. Tombol
+                      Live dan Repo sengaja DI LUAR <Link> ini: <a> tidak boleh
+                      bersarang di dalam <a>. */}
+                  <Link href={href} className="proj-link flex-1 flex flex-col">
+                    {/* Screenshot. object-cover + object-top: tinggi kartu
+                        seragam dan bagian atas screenshot (header/nav) ikut. */}
+                    <div className="bg-slate-950 border-b border-slate-800 overflow-hidden">
+                      <Image
+                        src={proj.image}
+                        alt={`${proj.name} interface`}
+                        width={640}
+                        height={360}
+                        unoptimized
+                        className="proj-shot h-[200px] w-full object-cover object-top"
+                      />
                     </div>
-                  </div>
-                </div>
-              </div>
-            ))}
+
+                    <div className={`flex flex-1 flex-col p-5 ${hasActions ? "pb-0" : ""}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <h4 className="text-base font-bold text-white leading-snug group-hover:text-teal-300 transition-colors">
+                          {proj.name}
+                        </h4>
+                        <svg
+                          className="w-4 h-4 shrink-0 mt-1 text-slate-600 group-hover:text-teal-400 group-hover:translate-x-0.5 transition"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13.5 4.5L21 12l-7.5 7.5M21 12H3" />
+                        </svg>
+                      </div>
+                      {proj.client && (
+                        <p className="text-xs text-slate-500 mt-1">{proj.client}</p>
+                      )}
+
+                      {teaser && (
+                        <p className="mt-3 text-[13px] text-slate-400 leading-relaxed line-clamp-2">
+                          {teaser}
+                        </p>
+                      )}
+
+                      <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-teal-400">
+                        {shown.map((skill, i) => (
+                          <span key={skill} className="flex items-center gap-2">
+                            {i > 0 && <span className="text-slate-700">·</span>}
+                            {skill}
+                          </span>
+                        ))}
+                        {rest > 0 && (
+                          <span className="flex items-center gap-2">
+                            <span className="text-slate-700">·</span>
+                            <span className="text-slate-500">+{rest}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+
+                  {/* Aksi. Tombol Live hanya dirender kalau live_url terisi,
+                      jadi tidak pernah ada tombol menuju link kosong. Project
+                      tanpa link sama sekali tidak dapat baris aksi. */}
+                  {(proj.live_url || proj.github_url) && (
+                    <div className="mt-auto flex gap-2 p-5 pt-5">
+                      {proj.live_url && (
+                        <a
+                          href={proj.live_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Buka demo ${proj.name}`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 active:translate-y-px text-white text-sm font-medium transition-colors"
+                        >
+                          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M9 5.25H6.75A1.5 1.5 0 005.25 6.75v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V15" />
+                          </svg>
+                          Live demo
+                        </a>
+                      )}
+                      {proj.github_url && (
+                        <a
+                          href={proj.github_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`Buka kode ${proj.name} di GitHub`}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:translate-y-px text-slate-200 text-sm font-medium border border-slate-700 hover:border-slate-600 transition-colors"
+                        >
+                          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1.1 1.5 1.1.9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.4 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.2-2.6 5.1-5.1 5.4.4.4.7 1 .7 2v2.9c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.65 18.35.5 12 .5z" />
+                          </svg>
+                          Repo
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
           </div>
         </section>
 

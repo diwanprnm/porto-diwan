@@ -39,3 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+graft/
+.claude
+.hallmark
+
+# Ledger artefak — dibuat oleh scripts/deploy-ledger.sh. Di server isinya nyata
+# dan berguna; di mesin lokal ia cuma sisa kalau skripnya dites manual, jadi
+# tidak boleh ikut ter-commit.
+.deploy-map
+.deploy-map.tmp.*
+

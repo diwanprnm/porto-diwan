@@ -1,7 +1,45 @@
 services:
+  db:
+    image: postgres:17-alpine
+    container_name: portfolio-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: porto
+      POSTGRES_PASSWORD: porto
+      POSTGRES_DB: porto
+    # Volume ini WAJIB. Tanpa ini, seluruh isi database (termasuk gambar yang
+    # di-upload) hilang setiap kali container dibuat ulang.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Skema dijalankan otomatis oleh image Postgres, tapi HANYA saat volume
+      # masih kosong (pertama kali dibuat). Untuk menjalankannya lagi, pakai
+      # `docker compose run --rm portfolio npm run db:migrate`.
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      # Tanpa healthcheck, portfolio bisa start sebelum Postgres siap menerima
+      # koneksi, dan seed/migrasi pertama akan gagal.
+      test: ["CMD-SHELL", "pg_isready -U porto -d porto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+
   portfolio:
     build: .
     container_name: portfolio
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Host "db" adalah nama service di atas — Docker menyediakannya sebagai
+      # hostname di jaringan internal compose.
+      DATABASE_URL: postgres://porto:porto@db:5432/porto
+      # WAJIB diganti sebelum dipakai di server yang bisa diakses orang lain.
+      ADMIN_SECRET: ${ADMIN_SECRET:-change-me-to-a-long-random-string}
     ports:
       - "3000:3000"
+
+volumes:
+  pgdata:

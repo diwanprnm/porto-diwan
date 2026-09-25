@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidatePath } from "next/cache";
-import { getProfileData, saveProfileData, type ProfileData } from "@/lib/data";
+import { saveProfileData, type ProfileData } from "@/lib/data";
 import { getAdminFromCookie } from "@/lib/auth";
 
 // PUT /api/profile — admin update
@@ -13,18 +12,18 @@ export async function PUT(req: NextRequest) {
 
   try {
     const body = (await req.json()) as Omit<ProfileData, "__meta">;
-    
-    // Fetch current to preserve meta version chain
-    const current = await getProfileData();
-    const updated: ProfileData = { ...body, __meta: current.__meta };
-    
-    await saveProfileData(updated);
-    
-    // Trigger ISR revalidation — regenerate static pages with new content
-    revalidatePath("/", "layout");
-    
-    return NextResponse.json({ success: true, version: updated.__meta.version });
-  } catch {
-    return NextResponse.json({ error: "Failed to save profile" }, { status: 500 });
+
+    // saveProfileData menaikkan __meta.version sendiri (dibaca di dalam
+    // transaksi) dan menulis semuanya dalam satu transaksi. Nilai __meta dari
+    // body tidak dipakai, jadi diisi placeholder di sini.
+    const version = await saveProfileData({
+      ...body,
+      __meta: { version: 0, updated_at: "" },
+    });
+
+    return NextResponse.json({ success: true, version });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save profile";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,0 +1,47 @@
+# Berkas ini menentukan apa yang TIDAK dikirim ke Docker saat build.
+#
+# Sebelumnya file ini tidak ada, dan itu bukan sekadar boros — ada dua masalah
+# nyata yang ditutupnya:
+#
+#   1. `COPY . .` di dockerfile menyalin node_modules milik komputermu (Windows)
+#      MENIMPA node_modules hasil `npm ci` (Linux) dari stage deps. Modul native
+#      seperti pg punya binding per-platform, jadi container bisa gagal start.
+#   2. `.env` ikut tersalin ke dalam image, dan image itu di-push ke Docker Hub.
+#      Artinya ADMIN_SECRET dan password database ikut terbit ke publik.
+
+# ── Rahasia ──────────────────────────────────────────────────────────────────
+.env
+.env.*
+*.pem
+
+# ── node_modules ─────────────────────────────────────────────────────────────
+# Dibiarkan di luar konteks build supaya yang dipakai adalah hasil `npm ci` di
+# dalam image, bukan node_modules dari mesin lokal.
+node_modules
+**/node_modules
+
+# ── Hasil build lokal ────────────────────────────────────────────────────────
+.next
+out
+build
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Git & editor ─────────────────────────────────────────────────────────────
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+
+# ── Perkakas lokal, tidak dipakai saat runtime ───────────────────────────────
+graft
+.claude
+.agents
+.hallmark
+design.md
+README.md
+skills-lock.json
+docker-compose.yml
+docker-compose.prod.yml

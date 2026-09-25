@@ -1,0 +1,17 @@
+# Akhir baris yang dipaksa LF.
+#
+# Repo ini dikembangkan di Windows dan di-deploy ke Linux. Git for Windows
+# defaultnya `core.autocrlf=true`, yang mengubah akhir baris jadi CRLF saat
+# checkout. Untuk file yang dieksekusi di server, itu merusak:
+#
+#   scripts/deploy-remote.sh  → "/usr/bin/env: 'bash\r': No such file or directory"
+#   dockerfile                → `RUN npm ci\r` gagal / berperilaku aneh
+#
+# Langkah `appleboy/ssh-action` di cicd.yml membuang \r dari skrip deploy sebagai
+# jaring pengaman, tapi lebih baik masalahnya tidak pernah muncul.
+#
+# Sengaja hanya menyebut pola tertentu, bukan `* text=auto`. Aturan menyeluruh
+# akan menulis ulang akhir baris seluruh repo sekaligus, dan diff raksasa seperti
+# itu menyulitkan review tanpa memberi manfaat untuk file yang tidak dieksekusi.
+*.sh text eol=lf
+dockerfile text eol=lf

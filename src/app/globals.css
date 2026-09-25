@@ -24,3 +24,94 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Animasi masuk saat scroll ─────────────────────────────────────────
+ * ATURAN UTAMA: konten selalu terlihat. Blok ini hanya menambah gerakan dan
+ * TIDAK PERNAH menyembunyikan konten, dan sama sekali tidak bergantung pada
+ * JavaScript.
+ *
+ * Tidak ada `opacity: 0` di luar animasi. Animasi scroll-driven menentukan
+ * opasitas dari posisi elemen di scrollport: sebelum masuk viewport nilainya
+ * 0, setelah masuk nilainya 1, dihitung browser dari CSS, bukan dari event JS.
+ * Jadi tidak ada keadaan di mana konten tersangkut tidak terlihat.
+ *
+ * Kalau browser belum mendukung animation-timeline (Safari/Firefox saat ini),
+ * blok @supports tidak berlaku, tidak ada animasi, konten tampil penuh.
+ */
+@keyframes reveal-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .reveal {
+      animation-name: reveal-in;
+      animation-duration: auto;
+      animation-fill-mode: both;
+      animation-timing-function: linear;
+      animation-timeline: view();
+      animation-range: entry 0% entry 50%;
+    }
+
+    /* Jeda bertingkat: range-nya digeser, jadi kartu masuk berurutan. */
+    .reveal-d1 { animation-range: entry 6% entry 56%; }
+    .reveal-d2 { animation-range: entry 12% entry 62%; }
+    .reveal-d3 { animation-range: entry 18% entry 68%; }
+  }
+}
+
+/* Border kartu project menyala saat hover. .reveal tidak lagi memakai
+ * transition, jadi utilitas Tailwind di elemennya bebas dan tidak bentrok. */
+@media (hover: hover) and (pointer: fine) {
+  .proj-card:hover {
+    border-color: rgb(20 184 166 / 0.4);
+  }
+}
+
+/* Seluruh kartu project adalah tautan. Ring fokus digambar di elemen luar,
+ * bukan di dalam <a>, supaya tetap rapi mengelilingi kartu dan tetap ada saat
+ * dinavigasi pakai keyboard. Tanpa ini, indikator fokusnya hilang. */
+.proj-card:has(.proj-link:focus-visible) {
+  outline: 2px solid #14b8a6;
+  outline-offset: 2px;
+}
+
+/* Screenshot di dalam kartu: zoom pelan saat kartunya di-hover. */
+.proj-shot {
+  transition: transform 500ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .proj-card:hover .proj-shot {
+    transform: scale(1.03);
+  }
+}
+
+/* Titik timeline experience menyala saat barisnya di-hover. */
+.tl-dot {
+  transition: background-color 220ms ease, border-color 220ms ease;
+}
+.tl-item:hover .tl-dot {
+  background-color: #14b8a6;
+  border-color: #14b8a6;
+}
+
+/* Gerakan dimatikan kalau pengguna minta. Konten tetap terlihat penuh. */
+@media (prefers-reduced-motion: reduce) {
+  .proj-shot,
+  .proj-card:hover .proj-shot {
+    transform: none;
+    transition: none;
+  }
+  .tl-dot,
+  .tl-item:hover .tl-dot {
+    transition: none;
+  }
+}
