@@ -162,13 +162,21 @@ sungguhan.
 ### Test
 
 ```bash
-npm test        # node --test tests/
+npm test        # node --test
 ```
 
 Runner-nya `node --test` bawaan Node 22 — **tidak ada framework test yang
 dipasang**. Itu disengaja: menambah dependensi berarti `package-lock.json` ikut
 berubah, dan `npm ci` menolak jalan kalau lockfile tidak sinkron dengan
 `package.json`. Untuk menguji empat fungsi murni, itu biaya yang tidak perlu.
+
+**Tanpa argumen direktori, dan itu bukan kelalaian.** `node --test tests/` dulu
+sah di Node 20 (argumen posisional diperlakukan sebagai *path*, direktori ditelusuri
+rekursif), tapi Node 22 mengubahnya jadi *pola glob* saja — `tests/` bukan glob,
+jadi Node mencoba menjalankannya sebagai file modul dan gagal dengan
+`Cannot find module '.../tests'` / `MODULE_NOT_FOUND`. Tanpa argumen, penemuan
+bawaan Node mencari `**/*.test.{js,mjs,cjs}` di seluruh repo (dan melewati
+`node_modules`), jadi `tests/pure.test.mjs` tetap ketemu di Node 20 maupun 22.
 
 Fungsi murninya ada di `src/lib/pure.mjs` (bukan `.ts`) supaya runner bawaan Node
 bisa menjalankannya tanpa toolchain. `src/lib/data.ts` mengimpor dan
@@ -286,7 +294,7 @@ ia ditangkap di job `build` dan diteruskan lewat `outputs.pinned`.
 
 Karena build terjadi di run `staging` dan deploy produksi terjadi di run `main`
 yang terpisah, digest harus disimpan di suatu tempat. Tempatnya adalah ledger —
-`scripts/deploy-ledger.sh`, file `~/porto/.deploy-map` di server:
+`scripts/deploy-ledger.sh`, file `/var/www/my-app/porto/.deploy-map` di server:
 
 ```
 3f2a91c84b7e... diwanprnm/porto@sha256:9c1f0a...
@@ -316,7 +324,7 @@ job `Deploy staging` hijau, baru merge ke `main`.
 
 ```
 test (staging)
-  └─ node --test tests/          ← perilaku, tanpa database, tanpa framework
+  └─ node --test                 ← perilaku, tanpa database, tanpa framework
 
 build (staging)
   ├─ tag     : diwanprnm/porto:<tree-hash>      ← dari scripts/image-tag.sh
@@ -419,11 +427,21 @@ dikirim lewat SSH:
 docker login -u <DOCKERHUB_USERNAME>
 ```
 
-**2. Siapkan direktori dan dua env file.** Satu untuk staging, satu untuk
-produksi. Isinya sama kecuali `APP_PORT` dan `POSTGRES_PASSWORD`:
+**2. Siapkan direktori dan dua env file.** Aplikasi disimpan di
+`/var/www/my-app/porto` — path ini dipakai oleh workflow (input `target`
+scp-action) dan oleh `scripts/deploy-remote.sh`, jadi kalau kamu memindahkannya,
+ubah keduanya.
+
+Karena `/var/www` biasanya milik `root` sementara deploy masuk sebagai user
+biasa (`VPS_SSH_USER`), **berikan kepemilikan direktori ke user itu**. Tanpa
+langkah ini, `scp-action` gagal `Permission denied` pada deploy pertama:
 
 ```bash
-mkdir -p ~/porto && cd ~/porto
+# Ganti 'deploy' dengan VPS_SSH_USER milikmu.
+sudo mkdir -p /var/www/my-app/porto
+sudo chown -R deploy:deploy /var/www/my-app
+
+cd /var/www/my-app/porto
 
 for env in staging production; do
   cat > ".env.$env" <<'EOF'
@@ -438,6 +456,18 @@ done
 echo 'APP_PORT=3001' >> .env.staging
 echo 'APP_PORT=3000' >> .env.production
 ```
+
+`chown` di atas menyasar `/var/www/my-app` (induknya), bukan hanya
+`.../porto` — supaya `scp-action` boleh membuat subdirektori sendiri kalau
+belum ada. Kalau kamu mengubah `target` di workflow menjadi path yang lebih
+dalam lagi, pastikan induk terdekat yang sudah ada tetap bisa ditulis user
+deploy.
+
+`chown` di atas hanya perlu diulang kalau ada file baru yang dibuat `root` di
+dalam direktori itu — mis. kamu menjalankan `docker compose` dengan `sudo`.
+Karena itu **jangan pakai `sudo`** untuk perintah docker di sini: kalau
+`sudo` dipakai, file yang lahir (termasuk `.deploy-map`) jadi milik `root` dan
+deploy berikutnya gagal menulisnya.
 
 `APP_IMAGE` diisi `placeholder` saja — skrip deploy menimpanya sendiri setiap
 kali jalan: staging dengan tag tree hash, produksi dengan referensi by-digest dari
@@ -458,7 +488,7 @@ domain staging dan produksi ke port masing-masing.
 Selesai. Setelah ini setiap merge ke `staging` membangun dan men-deploy ke
 staging, lalu merge ke `main` men-deploy ke produksi setelah kamu approve.
 
-**Catatan tentang ledger.** File `~/porto/.deploy-map` tidak perlu kamu buat —
+**Catatan tentang ledger.** File `/var/www/my-app/porto/.deploy-map` tidak perlu kamu buat —
 `deploy-ledger.sh` yang membuatnya sendiri saat deploy staging pertama yang lulus
 health check. Sebelum itu ia tidak ada, dan `preflight-production` akan gagal
 dengan pesan yang menjelaskan. Jadi urutan pertama kali harus:
@@ -478,7 +508,7 @@ lama masih ada di Docker Hub dengan tag yang tidak pernah berubah. Jalankan di
 server:
 
 ```bash
-cd ~/porto
+cd /var/www/my-app/porto
 
 # Lihat isi ledger — setiap baris: <tree-hash> <referensi-pinned>
 cat .deploy-map
@@ -516,7 +546,7 @@ menjalankan `deploy-remote.sh` tetap akan menerapkannya (idempoten, jadi tidak
 merusak apa pun).
 
 Kalau ledger ikut di-rollback — misalnya kamu ingin produksi melupakan entri
-tertentu — edit saja `~/porto/.deploy-map` dan hapus barisnya. Formatnya sengaja
+tertentu — edit saja `/var/www/my-app/porto/.deploy-map` dan hapus barisnya. Formatnya sengaja
 satu baris per entri supaya bisa dibaca dan disunting manusia tanpa perkakas.
 
 ### Catatan
@@ -550,7 +580,7 @@ src/lib/pure.mjs           Fungsi murni (slug, deskripsi, skill, gambar) — sat
                            salinan; diimpor data.ts dan scripts/db.mjs
 src/app/healthz/route.ts   GET /healthz — smoke test; sengaja tidak menyentuh database
 scripts/image-tag.sh       Isi commit → nama tag (git tree hash). Dipakai job build
-scripts/deploy-ledger.sh   Ledger artefak di server (~/porto/.deploy-map):
+scripts/deploy-ledger.sh   Ledger artefak di server (/var/www/my-app/porto/.deploy-map):
                            tree hash → referensi by-digest, ditulis setelah health
                            check staging lulus. Dibaca preflight & deploy produksi
 scripts/deploy-remote.sh   Dijalankan DI SERVER oleh ssh-action (pull → migrasi → up -d)

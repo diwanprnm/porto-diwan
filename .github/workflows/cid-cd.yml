@@ -1,4 +1,35 @@
-name: CI CD pipeline portfolio
+name: cicd pipeline
+
+# Model branch: develop → staging → main
+#
+#   push ke develop        → TIDAK ADA action apa pun
+#   PR ke staging / main   → lint/typecheck + test + dependency review
+#   merge ke staging       → build → smoke → sbom → deploy staging (otomatis)
+#   merge ke main          → preflight → ⏸ approve → deploy produksi
+#
+# Tahapnya dipisah menurut apa yang sebenarnya dibuktikan, dari yang paling
+# murah ke yang paling mahal:
+#
+#   verify  (lint + typecheck)  → kode konsisten dan tipenya benar
+#   test    (node --test)       → PERILAKUNYA benar  ← tidak bisa digantikan verify
+#   build   (docker build)      → image berhasil dibangun
+#   smoke   (docker run + curl) → image benar-benar BISA DIJALANKAN
+#   deploy                      → jalan di staging, lalu produksi setelah approve
+#
+# Pemisahan itu bukan formalitas. "Build hijau" dan "aplikasinya hidup" adalah
+# dua pernyataan berbeda — modul native, file yang lupa disalin, atau env yang
+# kurang semuanya lolos build dan baru muncul saat dijalankan. Tanpa tahap smoke,
+# kegagalan seperti itu baru ketahuan setelah deploy, saat versi lama sudah
+# terlanjur dimatikan.
+#
+# Poin pentingnya: produksi TIDAK build ulang. Image dibangun sekali di staging,
+# lalu produksi menarik image yang sama persis. Yang membuat "sama persis" itu
+# bisa dibuktikan adalah tag image yang diambil dari git TREE hash, bukan SHA
+# commit — lihat penjelasan lengkapnya di scripts/image-tag.sh.
+#
+# Efeknya jadi gerbang yang nyata: commit yang sampai ke main tanpa pernah lewat
+# staging tidak punya image di Docker Hub, dan job `preflight-production` akan
+# merah sebelum kamu diminta meng-approve apa pun.
 
 on:
     push:
@@ -10,81 +41,601 @@ permissions:
     contents: read
 
 concurrency:
-    group: ${{github.workflow}}-${{github.ref}}
-    cancel-in-progress: ${{github.ref != 'refs/heads/main'}}
+    # Group dipisah per branch, jadi staging dan produksi tidak saling membatalkan.
+    group: ${{ github.workflow }}-${{ github.ref }}
+    # Dibatalkan hanya di luar main. Push berturut-turut ke staging cukup
+    # menjalankan yang terakhir — tidak ada yang dirugikan.
+    #
+    # Di main TIDAK boleh: dua merge beruntun akan membatalkan run pertama di
+    # tengah deploy produksi, atau membuang job yang sedang menunggu approve.
+    # Ini tidak bisa ditambal dengan `concurrency` di level job deploy-production —
+    # begitu run-nya dibatalkan, seluruh job di dalamnya ikut hilang.
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+    # ── 1. Gerbang statis ──────────────────────────────────────────────────────
+    # Jalan di setiap push dan PR ke staging/main, termasuk PR sebelum di-merge.
+    #
+    # Ini tahap paling murah dan paling cepat, jadi ditaruh paling depan: lint dan
+    # typecheck tidak butuh menjalankan aplikasi, tidak butuh database, dan selesai
+    # dalam hitungan detik. Yang gagal di sini tidak perlu membayar waktu build
+    # image (2-3 menit) — itulah gunanya urutan, bukan sekadar kerapian.
     verify:
-        name: Verify and typecheck
+        name: Lint & typecheck
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
+
             - uses: actions/setup-node@v4
               with:
                   node-version: 22
                   cache: npm
+
             - run: npm ci
             - run: npm run lint
+
+            # Terpisah dari lint: `next build` tidak mengecek tipe.
             - run: npx tsc --noEmit
 
+    # ── 2. Test perilaku ───────────────────────────────────────────────────────
+    # Tahap yang BERBEDA dari `verify`, dan pemisahannya disengaja.
+    #
+    # Lint dan typecheck menjawab "kodenya konsisten dan tipenya benar". Keduanya
+    # TIDAK menjawab "perilakunya benar". Contoh yang persis menggambarkan bedanya
+    # ada di tests/pure.test.mjs: `projectSlug("A - - - B")` harus "a-b", dan tidak
+    # ada satu pun pemeriksaan statis yang bisa menangkap kalau hasilnya "a---b".
+    # Tipe tetap string, lint tetap bersih, dan URL-nya diam-diam rusak.
+    #
+    # Runner-nya `node --test` bawaan Node 22 — TIDAK ada framework test yang
+    # dipasang. Itu keputusan sadar: menambah dependensi berarti package-lock.json
+    # ikut berubah, dan `npm ci` menolak jalan kalau lockfile tidak sinkron dengan
+    # package.json. Untuk menguji empat fungsi murni, itu biaya yang tidak perlu.
+    #
+    # `needs: verify` membuat tahap ini ter-skip kalau gerbang statis gagal —
+    # bukan karena ada `if:`, tapi karena semantik `needs` sendiri.
     test:
         name: Unit test
         needs: verify
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
+
             - uses: actions/setup-node@v4
               with:
                   node-version: 22
                   cache: npm
+
             - run: npm ci
+
+            # SATU kali jalan. Exit code-nya yang menentukan hijau/merah — test yang
+            # tidak bisa gagal tidak menjaga apa pun (lihat catatan di
+            # tests/pure.test.mjs).
+            #
+            # Sengaja `npm test`, bukan `node --test` langsung, supaya CI dan mesin
+            # lokal menjalankan perintah yang sama persis. Kalau flag-nya diubah di
+            # package.json, CI ikut berubah — tidak ada dua definisi yang bisa
+            # menyimpang.
             - run: npm test
 
-    depedency-review:
-        name: Depedency review
+            # Laporan cakupan TIDAK dipasang sebagai langkah tersendiri, dan itu
+            # disengaja: menjalankannya terpisah berarti seluruh test dijalankan dua
+            # kali hanya untuk laporan yang sama. Kalau mau melihatnya, jalankan di
+            # lokal:
+            #
+            #   node --test --experimental-test-coverage
+            #
+            # Cakupan juga sengaja BUKAN ambang batas. Angka mudah jadi gerbang yang
+            # dilemahkan: begitu ia menghalangi merge, yang dilakukan orang adalah
+            # menurunkannya, bukan menambah test. Yang menjaga di sini adalah test-nya.
+
+    # ── 3. Cek dependensi di PR ────────────────────────────────────────────────
+    # Menolak PR yang menambah dependensi dengan kerentanan diketahui atau lisensi
+    # yang tidak diizinkan. Hanya relevan untuk PR — di push sudah terjadi.
+    dependency-review:
+        name: Dependency review
         if: github.event_name == 'pull_request'
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
             - uses: actions/dependency-review-action@v4
 
-    build-push:
-        name: Build and push image
+    # ── 4. Build & push (hanya dari staging) ───────────────────────────────────
+    # Ini SATU-SATUNYA tempat image dibangun. Produksi tidak punya job build sama
+    # sekali — kalau ia build ulang, hasil uji staging tidak lagi membuktikan apa
+    # pun tentang apa yang benar-benar jalan di produksi.
+    #
+    # `needs: test` — image baru dibangun setelah perilakunya diuji. Urutannya
+    # statis → perilaku → image, dari yang paling murah ke yang paling mahal.
+    build:
+        name: Build & push image
         needs: test
         if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
         runs-on: ubuntu-latest
         outputs:
-            image: ${{steps.meta.outputs.image}}
-            tag: ${{steps.meta.outputs.tag}}
-            pinned: ${{steps.pin.outputs.pinned}}
+            # Nilainya diambil dari `steps.*.outputs.*`, BUKAN disusun ulang di
+            # sini. Context `secrets` tidak tersedia di `jobs.<job_id>.outputs` — yang
+            # boleh di situ hanya github, needs, strategy, matrix, jobs, vars, steps,
+            # inputs. Kalau ditulis langsung, Actions menolak seluruh file workflow
+            # sebelum job apa pun jalan, jadi pipeline-nya tidak pernah dieksekusi.
+            image: ${{ steps.meta.outputs.image }}
+            tag: ${{ steps.meta.outputs.tag }}
+            # `pinned` = referensi by-digest (repo@sha256:...). Inilah yang dipakai
+            # untuk MENJALANKAN image, di staging maupun produksi.
+            #
+            # Kenapa digest, bukan tag: tag tree hash bisa bergerak kalau job `build`
+            # dijalankan ulang ("Re-run all jobs") — tag yang sama di-push lagi, dan
+            # byte-nya belum tentu identik karena build-push-action menyertakan
+            # attestation provenance yang memuat waktu build. Digest selalu menunjuk
+            # byte yang sama, dan registry yang menolak kalau tidak cocok.
+            pinned: ${{ steps.pin.outputs.pinned }}
         steps:
             - uses: actions/checkout@v4
+
+            # Satu tempat yang menyusun nama image: scripts/image-tag.sh. Dipakai
+            # `tags:` di bawah, dan dipublikasikan ke job lain lewat `outputs`.
+            #
+            # `tag` (bagian setelah titik dua) ikut diterbitkan karena job `sbom`
+            # memakainya sebagai nama artifact, dan karena log akan jauh lebih mudah
+            # dibaca kalau yang tercetak adalah tree hash-nya saja.
+            #
+            # Username-nya masuk lewat `env`, bukan disisipkan langsung ke dalam teks
+            # perintah. Dua-duanya di-mask di log, tapi lewat `env` teks perintahnya
+            # tetap terbaca apa adanya.
             - id: meta
               env:
                   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
               run: |
-                  IMAGE=$(bash scripts/image-tag.sh)"
-                  echo "image=$IMAGE" >> $GITHUB_OUTPUT
-                  echo "tag=${IMAGE##*:}" >> $GITHUB_OUTPUT
+                  IMAGE="$(bash scripts/image-tag.sh)"
+                  echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+                  echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
 
             - uses: docker/login-action@v3
               with:
-                  username: ${{secrets.DOCKERHUB_USERNAME}}
-                  password: ${{secrets.DOCKERHUB_TOKEN}}
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            - uses: docker/setup-buildx-action@v3
 
             - id: build
               uses: docker/build-push-action@v6
               with:
                   context: .
-                  file: ./Dockerfile
+                  file: ./dockerfile
                   push: true
+                  # Hanya tag tree hash. `latest` sengaja TIDAK dipakai: tag yang
+                  # bergerak membuat rollback tidak bisa diandalkan, karena build
+                  # berikutnya menimpanya sehingga versi lama bisa hilang.
+                  tags: ${{ steps.meta.outputs.image }}
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
 
+            # `digest` baru diketahui SETELAH push — registry yang menghitungnya. Jadi
+            # referensi pinned disusun di langkah terpisah, bukan di langkah `meta`.
+            #
+            # `${IMAGE%:*}` membuang tag dan menyisakan repo. Dipakai `%` (pemotongan
+            # terpendek dari kanan), bukan `%%`, supaya registry yang menyertakan port
+            # — mis. `registry:5000/porto:tag` — tetap terpotong benar.
             - id: pin
               env:
-                  IMAGE: ${{steps.meta.outputs.image}}
-                  DIGEST: ${{steps.build.outputs.digest}}
+                  IMAGE: ${{ steps.meta.outputs.image }}
+                  DIGEST: ${{ steps.build.outputs.digest }}
               run: |
-                  echo "pinned=${IMAGE:*}@${DIGEST}" >> $GITHUB_OUTPUT
-                  echo "Pinned : ${IMAGE:*}@${DIGEST}"
+                  echo "pinned=${IMAGE%:*}@${DIGEST}" >> "$GITHUB_OUTPUT"
+                  echo "Pinned: ${IMAGE%:*}@${DIGEST}"
+
+    # ── 5. Smoke test ──────────────────────────────────────────────────────────
+    # Menjalankan image yang baru dibangun, sungguhan, lalu menembak /healthz.
+    #
+    # Ini tahap yang membedakan "build berhasil" dari "aplikasinya hidup". Dua hal
+    # itu TIDAK sama, dan bedanya bukan teoretis:
+    #
+    #   - `docker build` hijau artinya Dockerfile-nya selesai, bukan bahwa
+    #     `npm start` di dalamnya berhasil.
+    #   - Modul native (pg punya binding per-platform), file yang lupa disalin ke
+    #     stage runner, atau env yang kurang semuanya baru ketahuan SAAT DIJALANKAN.
+    #   - Tanpa tahap ini, kegagalan seperti itu baru terlihat setelah deploy ke
+    #     staging — atau lebih buruk, di produksi.
+    #
+    # Dijalankan di runner CI, bukan di server: kalau di server, image yang rusak
+    # sudah terlanjur di-pull dan `up -d` sudah terlanjur menghentikan versi lama.
+    # Di sini tidak ada yang dirugikan kalau gagal.
+    #
+    # Yang ditembak /healthz, bukan "/" — dan itu disengaja. /healthz tidak
+    # menyentuh database (lihat src/app/healthz/route.ts), jadi kegagalannya
+    # menunjuk pada image-nya, bukan pada tidak-adanya Postgres di runner.
+    # Konektivitas database diuji di tempat yang memang punya database: health
+    # check di scripts/deploy-remote.sh setelah deploy.
+    smoke:
+        name: Smoke test image
+        needs: build
+        runs-on: ubuntu-latest
+        steps:
+            - uses: docker/login-action@v3
+              with:
+                  username: ${{ secrets.DOCKERHUB_USERNAME }}
+                  password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+            # Referensi PINNED (by digest), bukan tag. Smoke test harus menguji byte
+            # yang persis sama dengan yang nanti di-deploy — kalau memakai tag, dan
+            # tag itu kebetulan bergerak, yang diuji bisa jadi image yang berbeda.
+            #
+            # DATABASE_URL dan ADMIN_SECRET SENGAJA tidak diisi, dan itu justru yang
+            # membuat smoke test ini berarti. /healthz tidak menyentuh database maupun
+            # auth (lihat src/app/healthz/route.ts), jadi kalau container ini tetap
+            # gagal start, penyebabnya pasti image-nya sendiri — bukan karena runner CI
+            # tidak punya Postgres. Kalau di sini dipasang nilai palsu, kegagalan
+            # konfigurasi bisa tertutupi dan hasilnya hijau yang menyesatkan.
+            - name: Jalankan image
+              env:
+                  PINNED: ${{ needs.build.outputs.pinned }}
+              run: |
+                  docker run -d --name uji -p 3000:3000 "$PINNED"
+
+            # Loop, bukan `sleep 10` lalu satu curl.
+            #
+            # Alasannya bukan kecepatan, tapi kepastian: aplikasi butuh waktu berbeda
+            # tiap kali untuk siap, dan satu `sleep` yang kebetulan kurang akan
+            # menghasilkan kegagalan acak — jenis kegagalan yang paling merusak
+            # kepercayaan pada pipeline, karena orang lalu belajar mengabaikannya.
+            #
+            # 30 percobaan × 2 detik = 60 detik batas. Kalau container mati di
+            # tengah jalan, curl gagal terus dan loop ini habis — jadi mati juga
+            # terdeteksi, bukan menunggu selamanya.
+            - name: Tunggu aplikasi hidup lalu tembak /healthz
+              env:
+                  PINNED: ${{ needs.build.outputs.pinned }}
+              run: |
+                  for i in $(seq 1 30); do
+                    if curl -fsS http://localhost:3000/healthz > /tmp/healthz.json; then
+                      echo "✓ /healthz menjawab pada percobaan $i:"
+                      cat /tmp/healthz.json
+                      echo
+                      exit 0
+                    fi
+                    echo "  percobaan $i: belum menjawab, tunggu 2 detik..."
+                    sleep 2
+                  done
+
+                  echo "✗ GAGAL: /healthz tidak menjawab dalam 60 detik."
+                  echo
+                  echo "Image: $PINNED"
+                  echo
+                  echo "Artinya image ini BERHASIL DIBANGUN tapi TIDAK BISA DIJALANKAN."
+                  echo "Deploy tidak dilanjutkan — log container di bawah ini yang menjelaskan:"
+                  echo
+                  # `|| true` karena langkah ini berjalan dengan `-e` bawaan GitHub
+                  # Actions: kalau container-nya sudah tidak ada, `docker logs` gagal dan
+                  # skrip berhenti DI SINI — sebelum `exit 1`. Hasilnya tetap merah, tapi
+                  # pesan penjelas di atasnya bisa terpotong, dan kegagalan yang tidak
+                  # menjelaskan apa pun jauh lebih sulit didiagnosis.
+                  docker logs uji || true
+                  exit 1
+
+            # Selalu jalan, termasuk saat langkah sebelumnya gagal — kalau tidak,
+            # container `uji` tertinggal dan langkah pembersihan tidak pernah jalan.
+            # `|| true` karena `docker rm` gagal kalau container-nya tidak ada.
+            - name: Bersihkan
+              if: always()
+              run: docker rm -f uji || true
+
+    # ── 6. SBOM & retensi ──────────────────────────────────────────────────────
+    # Daftar seluruh paket di dalam image, disimpan sebagai artifact tahan lama.
+    #
+    # Gunanya bukan sekarang, melainkan nanti: ketika ada CVE baru di sebuah
+    # library, daftar ini yang menjawab "versi berapa saja dari image kita yang
+    # terpengaruh" tanpa perlu build ulang apa pun.
+    #
+    # `needs: [build, smoke]` — SBOM dibuat untuk image yang sudah terbukti bisa
+    # dijalankan. Tidak ada gunanya mendokumentasikan isi image yang tidak bisa
+    # start.
+    sbom:
+        name: SBOM
+        needs: [build, smoke]
+        runs-on: ubuntu-latest
+        # `permissions` di level workflow hanya memberi `contents: read`; scope yang
+        # tidak disebut jadi `none`. Unggah artifact lewat Actions artifact API, dan
+        # izin scope `actions` yang mengaturnya — jadi `actions: write` diberikan di
+        # sini supaya job ini tidak bergantung pada izin default repo.
+        #
+        # Diberikan per-job, bukan di level workflow, supaya job lain (verify, build,
+        # deploy) tetap hanya punya `contents: read`. Token yang lebih luas dari
+        # kebutuhan adalah permukaan serangan yang tidak perlu dibuka.
+        permissions:
+            contents: read
+            actions: write
+        steps:
+            - name: Buat SBOM dari image
+              uses: anchore/sbom-action@v0
+              with:
+                  # Referensi pinned (by digest), bukan tag. SBOM harus mendeskripsikan
+                  # byte yang benar-benar akan dijalankan — kalau tag-nya bergerak karena
+                  # build di-run ulang, SBOM yang dibuat dari tag bisa mendeskripsikan
+                  # image yang berbeda dari yang jalan di produksi.
+                  image: ${{ needs.build.outputs.pinned }}
+                  format: spdx-json
+                  output-file: sbom.spdx.json
+                  # Dipakai untuk menarik image; registry publik, jadi tidak perlu kredensial.
+
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: sbom-${{ needs.build.outputs.tag }}
+                  path: sbom.spdx.json
+                  # 90 hari. Ini batas retensi, bukan masa berlaku data — SBOM lama tetap
+                  # berguna selama image-nya masih bisa di-deploy. Kalau perlu lebih
+                  # panjang, simpan juga ke storage sendiri.
+                  retention-days: 90
+
+    # ── 7. Staging ─────────────────────────────────────────────────────────────
+    # Otomatis, dan inilah tempat versi baru benar-benar dijalankan sebelum ada
+    # yang menyetujui apa pun. Merge ke `staging` = deploy ke sini.
+    #
+    # `needs: [build, smoke, sbom]` — image sudah diuji perilakunya (test), sudah
+    # terbukti bisa dijalankan (smoke), dan sudah didokumentasikan isinya (sbom).
+    # Yang sampai ke sini adalah artefak yang tidak menyisakan pertanyaan.
+    #
+    # Dua langkah memakai appleboy/scp-action lalu appleboy/ssh-action. Isi
+    # docker-compose.prod.yml dan skrip deploy tetap hanya ada di repo — yang
+    # dikirim ke server salinannya, bukan tulisannya ditanam lagi di dalam YAML.
+    deploy-staging:
+        name: Deploy staging
+        needs: [build, smoke, sbom]
+        if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+        runs-on: ubuntu-latest
+        # Tanpa required reviewers. Environment ini hanya supaya riwayat deploy
+        # staging terlihat di halaman Deployments. Kalau kamu menambahkan reviewer di
+        # sini, deploy staging akan ikut menunggu approve — jangan.
+        environment:
+            name: staging
+        steps:
+            - uses: actions/checkout@v4
+
+            # `target: /var/www/my-app/porto` absolut, jadi file mendarat persis di situ —
+            # bukan di bawah home user SSH. scp-action membuat direktorinya sendiri
+            # kalau belum ada, tapi user SSH harus punya izin tulis ke /var/www
+            # (lihat README bagian setup server).
+            #
+            # Struktur di server mengikuti sumbernya di repo: compose file di
+            # /var/www/my-app/porto/docker-compose.prod.yml, skrip di
+            # /var/www/my-app/porto/scripts/deploy-remote.sh.
+            #
+            # deploy-ledger.sh ikut dikirim karena dipanggil oleh deploy-remote.sh
+            # setelah health check lulus, untuk mencatat digest ke ledger.
+            #
+            # Yang TIDAK dikirim: .env.staging / .env.production. File itu sudah ada
+            # di server dan berisi rahasia — mengirimnya berarti rahasia produksi
+            # melewati CI. Lihat README bagian setup server.
+            - name: Kirim file deploy ke server
+              uses: appleboy/scp-action@v1
+              with:
+                  host: ${{ secrets.VPS_SSH_HOST }}
+                  username: ${{ secrets.VPS_SSH_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  source: docker-compose.prod.yml,scripts/deploy-remote.sh,scripts/deploy-ledger.sh
+                  target: /var/www/my-app/porto
+
+            # ENV_NAME dan IMAGE dikirim lewat `envs`, bukan disisipkan ke dalam teks
+            # `script`. Nilainya jadi variabel lingkungan di sisi server, jadi tidak
+            # ada yang perlu di-escape dan tidak ada yang bisa pecah jadi perintah lain.
+            #
+            # `set -e` ditulis di dalam skrip, bukan diserahkan ke input action.
+            # Input `script_stop` yang dulu dipakai untuk ini SUDAH TIDAK ADA di
+            # ssh-action v1 (masih ada di v0.1.10). Menulisnya di v1 membuat Actions
+            # menolak file workflow-nya, jadi seluruh pipeline tidak jalan sama sekali.
+            # `set -e` memberi semantik yang sama — berhenti di perintah pertama yang
+            # gagal — tanpa bergantung pada input yang bisa hilang antar versi.
+            #
+            # `tr -d '\r'` adalah jaring pengaman: .gitattributes sudah memaksa LF
+            # untuk *.sh, tapi kalau aturan itu lolos, satu \r di akhir baris sudah
+            # cukup membuat skrip gagal dengan pesan yang membingungkan.
+            #
+            # IMAGE di sini adalah referensi PINNED (by digest), bukan tag — supaya
+            # yang benar-benar berjalan di staging adalah byte yang sama dengan yang
+            # nanti dipromosikan, bukan sekadar tag yang bisa bergerak.
+            #
+            # TREE dikirim terpisah karena hanya dipakai untuk MENCATAT di ledger.
+            # Ia tidak bisa diturunkan dari referensi image: digest tidak memuat
+            # informasi tree, dan justru pemetaan tree → digest itulah isi ledger.
+            #
+            # Perintah terakhir adalah skrip deploy itu sendiri, dan exit code-nya
+            # jadi exit code seluruh langkah — jadi deploy yang gagal akan merah di
+            # Actions. Tanpa itu, deploy yang gagal akan terlihat hijau.
+            - name: Jalankan deploy di server
+              uses: appleboy/ssh-action@v1
+              env:
+                  ENV_NAME: staging
+                  IMAGE: ${{ needs.build.outputs.pinned }}
+                  TREE: ${{ needs.build.outputs.tag }}
+              with:
+                  host: ${{ secrets.VPS_SSH_HOST }}
+                  username: ${{ secrets.VPS_SSH_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  envs: ENV_NAME,IMAGE,TREE
+                  script: |
+                      set -e
+                      tr -d '\r' < /var/www/my-app/porto/scripts/deploy-remote.sh > /var/www/my-app/porto/scripts/deploy-remote.sh.tmp
+                      mv /var/www/my-app/porto/scripts/deploy-remote.sh.tmp /var/www/my-app/porto/scripts/deploy-remote.sh
+                      tr -d '\r' < /var/www/my-app/porto/scripts/deploy-ledger.sh > /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp
+                      mv /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp /var/www/my-app/porto/scripts/deploy-ledger.sh
+                      bash /var/www/my-app/porto/scripts/deploy-remote.sh "$ENV_NAME" "$IMAGE" "$TREE"
+
+    # ── 8. Preflight produksi ──────────────────────────────────────────────────
+    # Gerbang sebelum approval: memastikan artefak untuk isi commit di main ini
+    # BENAR-BENAR sudah di-deploy dan lulus health check di staging.
+    #
+    # Kenapa ini penting, dan kenapa BUKAN sekadar "cek tag ada di Docker Hub".
+    #
+    # Tag tree hash bisa bergerak: kalau job `build` dijalankan ulang ("Re-run all
+    # jobs"), tag yang sama di-push lagi dan byte-nya belum tentu identik. Jadi
+    # keberadaan tag di registry tidak membuktikan produksi akan menjalankan byte
+    # yang sama dengan yang diuji di staging.
+    #
+    # Yang membuktikannya adalah ledger di server (scripts/deploy-ledger.sh).
+    # Entri ditulis hanya SETELAH staging lulus health check, dan isinya referensi
+    # by-digest. Jadi job ini menjawab pertanyaan yang tepat: "apakah isi commit
+    # ini sudah pernah berjalan sungguhan di staging?"
+    #
+    # Ini sekaligus gerbang branch: commit yang sampai ke main tanpa lewat staging
+    # tidak punya entri di ledger, jadi job ini merah. Tanpa job ini, produksi akan
+    # gagal jauh di dalam `docker pull` dengan pesan yang tidak menjelaskan apa pun.
+    #
+    # `needs: [verify, test]` — di jalur main, gerbang statis dan test tetap harus
+    # hijau sebelum artefak dipromosikan. Tanpa `test` di sini, sebuah commit yang
+    # test-nya merah tapi kebetulan sudah pernah lulus di staging akan lolos ke
+    # gerbang approval — padahal isinya berbeda dari yang diuji.
+    #
+    # Job ini SENGAJA tidak memakai `environment: production`, jadi gerbang approve
+    # baru muncul setelah ledger dipastikan punya entri — kamu tidak pernah diminta
+    # meng-approve deploy yang sudah pasti gagal.
+    preflight-production:
+        name: Cek artefak sudah diuji di staging
+        needs: [verify, test]
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        outputs:
+            # Hanya tree hash yang perlu diterbitkan. Referensi pinned TIDAK dibaca di
+            # sini, melainkan dicari lagi oleh deploy-production saat ia berjalan —
+            # supaya nilai yang dipakai adalah catatan ledger terbaru, bukan salinan
+            # yang sudah berumur beberapa menit.
+            tag: ${{ steps.meta.outputs.tag }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - id: meta
+              env:
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              run: |
+                  IMAGE="$(bash scripts/image-tag.sh)"
+                  echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
+                  echo "Tree hash: ${IMAGE##*:}"
+
+            # Ledger dikirim di sini juga, bukan hanya oleh deploy-staging, supaya job
+            # ini tidak bergantung pada job lain sudah pernah jalan. Kalau ledger belum
+            # ada, lookup di bawah gagal dengan pesan yang kita susun sendiri — bukan
+            # "No such file or directory" yang membingungkan.
+            - name: Kirim skrip ledger ke server
+              uses: appleboy/scp-action@v1
+              with:
+                  host: ${{ secrets.VPS_SSH_HOST }}
+                  username: ${{ secrets.VPS_SSH_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  source: scripts/deploy-ledger.sh
+                  target: /var/www/my-app/porto
+
+            # Exit code dari skrip ini yang menentukan hijau/merah. Tidak ada nilai yang
+            # perlu dibaca kembali dari server: yang dibutuhkan hanya "ada" atau
+            # "tidak ada".
+            - name: Pastikan artefak ada di ledger
+              uses: appleboy/ssh-action@v1
+              env:
+                  TREE: ${{ steps.meta.outputs.tag }}
+              with:
+                  host: ${{ secrets.VPS_SSH_HOST }}
+                  username: ${{ secrets.VPS_SSH_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  envs: TREE
+                  script: |
+                      set -e
+                      tr -d '\r' < /var/www/my-app/porto/scripts/deploy-ledger.sh > /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp
+                      mv /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp /var/www/my-app/porto/scripts/deploy-ledger.sh
+                      if bash /var/www/my-app/porto/scripts/deploy-ledger.sh lookup "$TREE" >/dev/null 2>&1; then
+                        echo "✓ Ledger punya entri untuk $TREE"
+                        exit 0
+                      fi
+                      echo "✗ GAGAL: isi commit ini belum pernah di-deploy ke staging."
+                      echo
+                      echo "  tree hash : $TREE"
+                      echo "  ledger    : /var/www/my-app/porto/.deploy-map"
+                      echo
+                      echo "Artinya kode di main ini belum pernah berjalan di staging, jadi"
+                      echo "tidak ada jaminan apa pun bahwa ia layak ke produksi."
+                      echo
+                      echo "Kemungkinan penyebab:"
+                      echo "  - commit di-push langsung ke main, melewati staging"
+                      echo "  - merge ke main belum didahului merge ke staging"
+                      echo "  - deploy staging gagal, jadi ledger tidak sempat dicatat"
+                      echo
+                      echo "Perbaikan: merge perubahan yang sama ke staging dulu, tunggu"
+                      echo "job 'Deploy staging' hijau, baru merge ke main."
+                      exit 1
+
+    # ── 9. Produksi ────────────────────────────────────────────────────────────
+    # Berhenti di sini sampai ada yang klik Approve di halaman Actions. Gerbangnya
+    # dari GitHub Environment bernama "production" (Settings → Environments →
+    # required reviewers), bukan dari `if:` — jadi tidak bisa dilewati.
+    #
+    # Yang tercatat di audit log GitHub: siapa yang approve, kapan, dan SHA berapa.
+    #
+    # Perhatikan: TIDAK ada job build di jalur ini. Referensi image dibaca dari
+    # ledger di server — artefak yang sudah lulus health check di staging.
+    deploy-production:
+        name: Deploy produksi
+        needs: preflight-production
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+        environment:
+            # Nama environment ini yang menghubungkan job ke gerbang approve di
+            # Settings → Environments. Tanpa environment bernama "production" dengan
+            # required reviewers, job ini jalan langsung tanpa approval.
+            name: production
+            # `url:` sengaja tidak diisi. Di posisi ini `secrets` tidak boleh dipakai
+            # (hanya vars/inputs/github), dan kalau kamu punya domain, isi dengan
+            # repository variable:
+            #   url: https://${{ vars.APP_URL }}
+            # Tambahkan APP_URL di Settings → Secrets and variables → Actions →
+            # Variables. Yang muncul adalah tombol di halaman deployment GitHub.
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Kirim file deploy ke server
+              uses: appleboy/scp-action@v1
+              with:
+                  host: ${{ secrets.VPS_SSH_HOST }}
+                  username: ${{ secrets.VPS_SSH_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  source: docker-compose.prod.yml,scripts/deploy-remote.sh,scripts/deploy-ledger.sh
+                  target: /var/www/my-app/porto
+
+            # `lookup` dijalankan DI SINI, bukan diteruskan sebagai output dari
+            # preflight-production. Alasannya: ledger bisa diperbarui antara preflight
+            # dan deploy (mis. staging di-re-run untuk tree hash yang sama). Dengan
+            # membaca tepat sebelum deploy, nilai yang dipakai adalah yang paling baru
+            # — dan itu justru yang diinginkan, karena entri terbaru berarti yang
+            # paling akhir terbukti hidup di staging.
+            #
+            # `lookup` sengaja tidak mencetak pesan saat gagal (lihat deploy-ledger.sh),
+            # jadi kegagalannya ditangani di sini supaya pesannya jelas. Tanpa ini,
+            # `set -e` akan menghentikan skrip dengan output kosong — dan kegagalan yang
+            # tidak menjelaskan apa pun jauh lebih sulit didiagnosis daripada kegagalan
+            # yang salah.
+            #
+            # Tidak ada argumen ketiga: produksi MEMBACA ledger, tidak mencatat. Kalau
+            # ia ikut mencatat, entri "lulus uji staging" akan tercampur dengan "pernah
+            # di-deploy ke produksi", dan gerbangnya jadi tidak bermakna.
+            - name: Jalankan deploy di server
+              uses: appleboy/ssh-action@v1
+              env:
+                  ENV_NAME: production
+                  TREE: ${{ needs.preflight-production.outputs.tag }}
+              with:
+                  host: ${{ secrets.VPS_SSH_HOST }}
+                  username: ${{ secrets.VPS_SSH_USER }}
+                  key: ${{ secrets.VPS_SSH_KEY }}
+                  envs: ENV_NAME,TREE
+                  script: |
+                      set -e
+                      tr -d '\r' < /var/www/my-app/porto/scripts/deploy-remote.sh > /var/www/my-app/porto/scripts/deploy-remote.sh.tmp
+                      mv /var/www/my-app/porto/scripts/deploy-remote.sh.tmp /var/www/my-app/porto/scripts/deploy-remote.sh
+                      tr -d '\r' < /var/www/my-app/porto/scripts/deploy-ledger.sh > /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp
+                      mv /var/www/my-app/porto/scripts/deploy-ledger.sh.tmp /var/www/my-app/porto/scripts/deploy-ledger.sh
+
+                      if ! IMAGE="$(bash /var/www/my-app/porto/scripts/deploy-ledger.sh lookup "$TREE")"; then
+                        echo "✗ GAGAL: ledger tidak punya entri untuk $TREE."
+                        echo
+                        echo "Job preflight seharusnya sudah menangkap ini. Kalau kamu melihat"
+                        echo "pesan ini, entri ledger terhapus atau berubah di antara preflight"
+                        echo "dan deploy. Periksa /var/www/my-app/porto/.deploy-map di server."
+                        exit 1
+                      fi
+
+                      echo "→ Ledger: $TREE → $IMAGE"
+                      bash /var/www/my-app/porto/scripts/deploy-remote.sh "$ENV_NAME" "$IMAGE"

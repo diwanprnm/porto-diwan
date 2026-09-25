@@ -1,6 +1,11 @@
 // Test untuk fungsi murni di src/lib/pure.mjs.
 //
-// Dijalankan dengan runner bawaan Node: `npm test` → `node --test tests/`.
+// Dijalankan dengan runner bawaan Node: `npm test` → `node --test`.
+//
+// Sengaja TANPA argumen direktori: di Node 22 argumen posisional diperlakukan
+// sebagai pola glob, bukan path — `node --test tests/` gagal dengan
+// `Cannot find module '.../tests'`. Tanpa argumen, penemuan bawaan mencari
+// `**/*.test.mjs` di seluruh repo (melewati node_modules).
 // Tidak ada framework test yang dipasang, dan itu disengaja — lihat catatan di
 // src/lib/pure.mjs soal kenapa .mjs.
 //

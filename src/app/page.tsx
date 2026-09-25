@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import SectionNav from "./SectionNav";
 import {
   getProfileData,
   groupSkillsByCategory,
@@ -71,6 +72,10 @@ export default async function Home() {
         <p className="mt-5 text-slate-400 text-sm leading-relaxed text-center px-2">
           {profile.bio}
         </p>
+
+        {/* Section nav — rail. Sticky sidebar keeps it on screen while the
+            content column scrolls, so it doubles as a reading position. */}
+        <SectionNav variant="rail" />
 
         {/* Education */}
         <div className="mt-8">
@@ -153,8 +158,12 @@ export default async function Home() {
 
       {/* ── RIGHT CONTENT ── */}
       <main className="flex-1 lg:overflow-y-auto p-6 md:p-10 lg:p-12">
+        {/* Section nav — bar. Below `lg` the sidebar scrolls away with the
+            page, so the nav re-appears pinned to the top of the column. */}
+        <SectionNav variant="bar" />
+
         {/* About */}
-        <section className="mb-16">
+        <section id="about" className="mb-16 scroll-mt-20">
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
             About
@@ -165,7 +174,7 @@ export default async function Home() {
         </section>
 
         {/* Skills — bento grid, lebar tile mengikuti jumlah isi */}
-        <section className="mb-16">
+        <section id="skills" className="mb-16 scroll-mt-20">
           <div className="mb-6 flex items-baseline justify-between gap-4">
             <h3 className="text-xl font-bold text-white flex items-center gap-3">
               <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
@@ -210,7 +219,7 @@ export default async function Home() {
         </section>
 
         {/* Experience — Timeline */}
-        <section className="mb-16">
+        <section id="experience" className="mb-16 scroll-mt-20">
           <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3">
             <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
             Experience
@@ -260,7 +269,7 @@ export default async function Home() {
         {/* Projects — card ringkas: screenshot, nama, client, satu kalimat
             deskripsi, stack utama, plus tombol Live/Repo. Detail lengkap ada di
             /projects/[slug]. Seluruh bagian atas card menuju halaman detail. */}
-        <section id="projects" className="mb-16 scroll-mt-6">
+        <section id="projects" className="mb-16 scroll-mt-20">
           <div className="mb-6 flex items-baseline justify-between gap-4">
             <h3 className="text-xl font-bold text-white flex items-center gap-3">
               <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
