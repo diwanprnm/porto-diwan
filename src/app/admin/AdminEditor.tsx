@@ -203,10 +203,11 @@ export default function AdminEditor() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      const r = res.ok ? await res.json() : await res.json();
       if (res.ok) {
+        const r = await res.json();
         setMsg({ type: "ok", text: `✓ Saved (v${r.version}). Halaman CV sudah di-update.` });
       } else {
+        const r = await res.json();
         setMsg({ type: "err", text: r.error || "Gagal menyimpan" });
       }
     } catch {
@@ -224,8 +225,7 @@ export default function AdminEditor() {
   if (!data) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">Gagal memuat data.</div>;
 
   // ── Setters ──
-  const set = <K extends keyof ProfileData>(k: K, v: ProfileData[K]) => setData({ ...data, [k]: v });
-  const setProfile = (k: keyof ProfileData["profile"], v: string) =>
+  const updateProfile = (k: keyof ProfileData["profile"], v: string) =>
     setData({ ...data, profile: { ...data.profile, [k]: v } });
   // contact ada di root ProfileData, bukan di dalam profile.
   const updateContact = (k: string, v: string) =>
@@ -272,7 +272,7 @@ export default function AdminEditor() {
   };
 
   // Experience
-  const setExp = (i: number, k: keyof Experience, v: string | string[]) => {
+  const updateExp = (i: number, k: string, v: string) => {
     const exp = [...data.experience];
     exp[i] = { ...exp[i], [k]: v };
     setData({ ...data, experience: exp });
@@ -312,7 +312,7 @@ export default function AdminEditor() {
     setData({ ...data, experience: data.experience.filter((_, idx) => idx !== i) });
 
   // Projects
-  const setProj = (i: number, k: keyof Project, v: string | string[]) => {
+  const updateProj = (i: number, k: string, v: string) => {
     const proj = [...data.projects];
     proj[i] = { ...proj[i], [k]: v };
     setData({ ...data, projects: proj });
@@ -348,12 +348,6 @@ export default function AdminEditor() {
   const removeProj = (i: number) =>
     setData({ ...data, projects: data.projects.filter((_, idx) => idx !== i) });
 
-  // Socials
-  const setSocial = (i: number, k: keyof Social, v: string) => {
-    const s = [...data.socials];
-    s[i] = { ...s[i], [k]: v };
-    setData({ ...data, socials: s });
-  };
   const addSocial = () =>
     setData({ ...data, socials: [...data.socials, { platform: "", url: "", icon: "" }] });
   const removeSocial = (i: number) =>
@@ -418,19 +412,19 @@ export default function AdminEditor() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <label className={label}>School</label>
-              <input className={input} value={data.education.school} onChange={(e) => setEdu("school", e.target.value)} />
+              <input className={input} value={data.education.school} onChange={(e) => updateEducation("school", e.target.value)} />
             </div>
             <div>
               <label className={label}>Period</label>
-              <input className={input} value={data.education.period} onChange={(e) => setEdu("period", e.target.value)} />
+              <input className={input} value={data.education.period} onChange={(e) => updateEducation("period", e.target.value)} />
             </div>
             <div>
               <label className={label}>Degree</label>
-              <input className={input} value={data.education.degree} onChange={(e) => setEdu("degree", e.target.value)} />
+              <input className={input} value={data.education.degree} onChange={(e) => updateEducation("degree", e.target.value)} />
             </div>
             <div>
               <label className={label}>GPA (optional)</label>
-              <input className={input} value={data.education.gpa} onChange={(e) => setEdu("gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
+              <input className={input} value={data.education.gpa} onChange={(e) => updateEducation("gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
             </div>
           </div>
         </section>
