@@ -275,6 +275,11 @@ jobs:
         needs: build
         runs-on: ubuntu-latest
         steps:
+            # Checkout DIBUTUHKAN di sini, tidak seperti sebelumnya. Langkah resolusi
+            # di bawah memanggil scripts/image-tag.sh untuk menghitung ulang nama image
+            # dari isi commit; tanpa checkout, skrip itu tidak ada di runner.
+            - uses: actions/checkout@v4
+
             - uses: docker/login-action@v3
               with:
                   username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -292,30 +297,28 @@ jobs:
             # konfigurasi bisa tertutupi dan hasilnya hijau yang menyesatkan.
             - name: Jalankan image
               env:
+                  # Kalau job build baru saja jalan di graf yang sama, nilainya
+                  # sudah ada di sini. Kalau tidak (re-run sebagian, atau job ini
+                  # dijalankan ulang sendirian), nilainya kosong — dan skrip di
+                  # bawah menghitung ulang referensinya dari isi commit.
                   PINNED: ${{ needs.build.outputs.pinned }}
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
               run: |
-                  # Referensi yang sah selalu berbentuk "repo@sha256:...".
-                  # Diperiksa di sini, bukan diserahkan ke `docker run`: kalau
-                  # nilainya kosong atau cacat ("repo@"), docker hanya bilang
-                  # "invalid reference format" — pesan yang menunjuk ke Docker
-                  # padahal sebabnya output job yang tidak terisi.
-                  case "$PINNED" in
-                    *@sha256:*)
-                      ;;
-                    *)
-                      echo "✗ GAGAL: referensi image tidak sah: '$PINNED'"
-                      echo
-                      if [ -z "$PINNED" ]; then
-                        echo "Nilainya KOSONG. Kalau job ini dijalankan ulang sendirian"
-                        echo "('Re-run job'), output job build tidak tersedia — jalankan"
-                        echo "ulang seluruh workflow ('Re-run all jobs'), bukan job ini."
-                      else
-                        echo "Nilainya tidak memuat '@sha256:'. Artinya langkah 'id: pin'"
-                        echo "di job build menghasilkan referensi yang cacat."
-                      fi
-                      exit 1
-                      ;;
-                  esac
+                  # Referensi diselesaikan oleh scripts/resolve-image.sh, bukan
+                  # dibaca mentah dari output job. Output job TIDAK bertahan
+                  # melewati "Re-run failed jobs" — GitHub tidak menjalankan
+                  # ulang job `needs`-nya, jadi nilai itu datang kosong dan
+                  # referensi yang sah pun terlihat seperti kesalahan konfigurasi.
+                  # Skrip itu memakai output build kalau ada, dan kalau tidak
+                  # menghitung tag dari git tree hash lalu membaca digest-nya
+                  # dari registry. Hasilnya sama, tapi tidak lagi bergantung
+                  # pada job build baru saja jalan.
+                  PINNED="$(bash scripts/resolve-image.sh)"
+                  # Diterbitkan ke langkah berikutnya lewat GITHUB_ENV, supaya
+                  # langkah itu memakai referensi yang SUDAH diselesaikan — bukan
+                  # output job build yang bisa kosong. Kalau tidak, pesan
+                  # kegagalannya akan mencetak "Image: " yang kosong.
+                  echo "PINNED=$PINNED" >> "$GITHUB_ENV"
                   docker run -d --name uji -p 3000:3000 "$PINNED"
 
             # Loop, bukan `sleep 10` lalu satu curl.
@@ -329,8 +332,6 @@ jobs:
             # tengah jalan, curl gagal terus dan loop ini habis — jadi mati juga
             # terdeteksi, bukan menunggu selamanya.
             - name: Tunggu aplikasi hidup lalu tembak /healthz
-              env:
-                  PINNED: ${{ needs.build.outputs.pinned }}
               run: |
                   for i in $(seq 1 30); do
                     if curl -fsS http://localhost:3000/healthz > /tmp/healthz.json; then
@@ -391,6 +392,25 @@ jobs:
             contents: read
             actions: write
         steps:
+            - uses: actions/checkout@v4
+
+            # Referensi image TIDAK dibaca mentah dari `needs.build.outputs`: output
+            # job tidak bertahan melewati "Re-run failed jobs" (GitHub tidak
+            # menjalankan ulang job `needs`-nya), jadi nilainya bisa datang kosong
+            # dan langkah SBOM gagal pada referensi yang tidak sah. Skrip ini
+            # memakai output build kalau ada, dan kalau tidak menghitung ulang
+            # tag dari git tree hash lalu membaca digest dari registry.
+            - name: Selesaikan referensi image
+              id: image
+              env:
+                  PINNED: ${{ needs.build.outputs.pinned }}
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              run: |
+                  PINNED="$(bash scripts/resolve-image.sh)"
+                  echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
+                  echo "tag=$(bash scripts/resolve-image.sh tag)" >> "$GITHUB_OUTPUT"
+                  echo "Referensi: $PINNED"
+
             - name: Buat SBOM dari image
               uses: anchore/sbom-action@v0
               with:
@@ -398,14 +418,14 @@ jobs:
                   # byte yang benar-benar akan dijalankan — kalau tag-nya bergerak karena
                   # build di-run ulang, SBOM yang dibuat dari tag bisa mendeskripsikan
                   # image yang berbeda dari yang jalan di produksi.
-                  image: ${{ needs.build.outputs.pinned }}
+                  image: ${{ steps.image.outputs.pinned }}
                   format: spdx-json
                   output-file: sbom.spdx.json
                   # Dipakai untuk menarik image; registry publik, jadi tidak perlu kredensial.
 
             - uses: actions/upload-artifact@v4
               with:
-                  name: sbom-${{ needs.build.outputs.tag }}
+                  name: sbom-${{ steps.image.outputs.tag }}
                   path: sbom.spdx.json
                   # 90 hari. Ini batas retensi, bukan masa berlaku data — SBOM lama tetap
                   # berguna selama image-nya masih bisa di-deploy. Kalau perlu lebih
@@ -460,6 +480,25 @@ jobs:
                   source: docker-compose.prod.yml,scripts/deploy-remote.sh,scripts/deploy-ledger.sh
                   target: /var/www/my-app/porto
 
+            # Referensi image diselesaikan DI SINI, bukan dibaca mentah dari
+            # `needs.build.outputs`: output job tidak bertahan melewati "Re-run
+            # failed jobs" — GitHub tidak menjalankan ulang job `needs`-nya, jadi
+            # nilainya bisa datang kosong dan deploy gagal pada referensi yang
+            # tidak sah. Skrip ini memakai output build kalau ada, dan kalau tidak
+            # menghitung ulang tag dari git tree hash lalu membaca digest dari
+            # registry. Hasilnya sama, tapi tidak lagi bergantung pada job build
+            # baru saja jalan di graf yang sama.
+            - name: Selesaikan referensi image
+              id: image
+              env:
+                  PINNED: ${{ needs.build.outputs.pinned }}
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              run: |
+                  PINNED="$(bash scripts/resolve-image.sh)"
+                  echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
+                  echo "tag=$(bash scripts/resolve-image.sh tag)" >> "$GITHUB_OUTPUT"
+                  echo "Referensi: $PINNED"
+
             # ENV_NAME dan IMAGE dikirim lewat `envs`, bukan disisipkan ke dalam teks
             # `script`. Nilainya jadi variabel lingkungan di sisi server, jadi tidak
             # ada yang perlu di-escape dan tidak ada yang bisa pecah jadi perintah lain.
@@ -490,8 +529,8 @@ jobs:
               uses: appleboy/ssh-action@v1
               env:
                   ENV_NAME: staging
-                  IMAGE: ${{ needs.build.outputs.pinned }}
-                  TREE: ${{ needs.build.outputs.tag }}
+                  IMAGE: ${{ steps.image.outputs.pinned }}
+                  TREE: ${{ steps.image.outputs.tag }}
               with:
                   host: ${{ secrets.VPS_SSH_HOST }}
                   username: ${{ secrets.VPS_SSH_USER }}
@@ -539,10 +578,11 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
         outputs:
-            # Hanya tree hash yang perlu diterbitkan. Referensi pinned TIDAK dibaca di
-            # sini, melainkan dicari lagi oleh deploy-production saat ia berjalan —
-            # supaya nilai yang dipakai adalah catatan ledger terbaru, bukan salinan
-            # yang sudah berumur beberapa menit.
+            # Tree hash diterbitkan untuk keterbacaan (dan supaya nilai yang
+            # diverifikasi preflight terlihat di halaman run). `deploy-production`
+            # TIDAK membacanya, melainkan menghitung ulang nilai yang sama dari isi
+            # commit — output job tidak bertahan melewati "Re-run failed jobs",
+            # jadi membacanya akan membuat job itu rapuh tanpa manfaat.
             tag: ${{ steps.meta.outputs.tag }}
         steps:
             - uses: actions/checkout@v4
@@ -551,9 +591,12 @@ jobs:
               env:
                   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
               run: |
-                  IMAGE="$(bash scripts/image-tag.sh)"
-                  echo "tag=${IMAGE##*:}" >> "$GITHUB_OUTPUT"
-                  echo "Tree hash: ${IMAGE##*:}"
+                  # Satu tempat yang menghitung tag, sama dengan yang dipakai
+                  # `deploy-production` dan `build`. Nilainya deterministik dari
+                  # isi commit, jadi ketiganya tidak mungkin berbeda pendapat.
+                  TREE="$(bash scripts/resolve-image.sh tag)"
+                  echo "tag=$TREE" >> "$GITHUB_OUTPUT"
+                  echo "Tree hash: $TREE"
 
             # Ledger dikirim di sini juga, bukan hanya oleh deploy-staging, supaya job
             # ini tidak bergantung pada job lain sudah pernah jalan. Kalau ledger belum
@@ -633,6 +676,22 @@ jobs:
         steps:
             - uses: actions/checkout@v4
 
+            # Tree hash dihitung DI SINI, bukan dibaca dari output
+            # `preflight-production`: output job tidak bertahan melewati "Re-run
+            # failed jobs" — GitHub tidak menjalankan ulang job `needs`-nya, jadi
+            # nilainya bisa datang kosong dan `lookup` di server akan ditanyakan
+            # untuk tree hash kosong. Nilai ini deterministik dari isi commit, jadi
+            # menghitungnya ulang selalu memberi hasil yang sama dengan yang
+            # diterbitkan preflight — tanpa bergantung pada job itu baru saja jalan.
+            - name: Tentukan tree hash
+              id: meta
+              env:
+                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+              run: |
+                  TREE="$(bash scripts/resolve-image.sh tag)"
+                  echo "tag=$TREE" >> "$GITHUB_OUTPUT"
+                  echo "Tree hash: $TREE"
+
             - name: Kirim file deploy ke server
               uses: appleboy/scp-action@v1
               with:
@@ -662,7 +721,7 @@ jobs:
               uses: appleboy/ssh-action@v1
               env:
                   ENV_NAME: production
-                  TREE: ${{ needs.preflight-production.outputs.tag }}
+                  TREE: ${{ steps.meta.outputs.tag }}
               with:
                   host: ${{ secrets.VPS_SSH_HOST }}
                   username: ${{ secrets.VPS_SSH_USER }}
