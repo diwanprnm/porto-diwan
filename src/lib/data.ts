@@ -55,6 +55,14 @@ export type Language = {
   level: string;
 };
 
+export type Certification = {
+  name: string;
+  issuer: string;
+  date: string;
+  /** Opsional. Kosong = link "Verify" tidak dirender, jadi tidak ada link mati. */
+  url?: string;
+};
+
 export type ProfileData = {
   profile: {
     name: string;
@@ -80,6 +88,11 @@ export type ProfileData = {
   experience: Experience[];
   projects: Project[];
   languages?: Language[];
+  /**
+   * Opsional. Dokumen lama di profile_doc tidak punya kunci ini, jadi setiap
+   * pembaca harus siap menerima undefined — bukan array kosong.
+   */
+  certifications?: Certification[];
   __meta: { version: number; updated_at: string };
 };
 

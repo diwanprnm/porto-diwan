@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SECTIONS } from "@/lib/sections";
+import { SECTIONS, type SectionId } from "@/lib/sections";
 
 type Variant = "rail" | "bar";
 
@@ -18,8 +18,23 @@ type Variant = "rail" | "bar";
  * `href="#id"` links, so with no JS the nav still works. Without JS nothing is
  * highlighted, which is the honest state — the browser cannot tell us where
  * the reader is.
+ *
+ * `visible` is the list of sections the page actually rendered. Some sections
+ * are conditional (Certifications renders nothing when empty), and a nav link
+ * pointing at a missing anchor is a dead link — so the page passes what it
+ * drew, and this list is filtered to match. Defaulting to every registered id
+ * keeps the old behaviour for callers that render all of them.
  */
-export default function SectionNav({ variant = "rail" }: { variant?: Variant }) {
+export default function SectionNav({
+  variant = "rail",
+  visible,
+}: {
+  variant?: Variant;
+  visible?: readonly SectionId[];
+}) {
+  const shown = visible
+    ? SECTIONS.filter((s) => visible.includes(s.id))
+    : SECTIONS;
   const [active, setActive] = useState<string | null>(null);
   // Which sections currently cross the detection band. Kept across observer
   // callbacks because each callback only carries the entries that *changed*.
@@ -57,7 +72,7 @@ export default function SectionNav({ variant = "rail" }: { variant?: Variant }) 
         className="lg:hidden sticky top-0 z-20 -mx-6 md:-mx-10 mb-8 border-b border-slate-800 bg-slate-950/90 backdrop-blur px-6 md:px-10 py-3"
       >
         <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {SECTIONS.map((s) => {
+          {shown.map((s) => {
             const on = s.id === active;
             return (
               <li key={s.id} className="shrink-0">
@@ -87,7 +102,7 @@ export default function SectionNav({ variant = "rail" }: { variant?: Variant }) 
         Sections
       </h3>
       <ul className="space-y-0.5">
-        {SECTIONS.map((s) => {
+        {shown.map((s) => {
           const on = s.id === active;
           return (
             <li key={s.id}>

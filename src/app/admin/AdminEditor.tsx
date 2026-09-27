@@ -353,6 +353,24 @@ export default function AdminEditor() {
   const removeSocial = (i: number) =>
     setData({ ...data, socials: data.socials.filter((_, idx) => idx !== i) });
 
+  // Certifications.
+  //
+  // Semua akses array memakai `data.certifications ?? []`: dokumen lama di
+  // profile_doc tidak punya kunci ini, jadi tanpa penjaga itu `.map`/spread akan
+  // melempar error dan halaman admin gagal memuat.
+  const updateCert = (i: number, k: string, v: string) => {
+    const certifications = [...(data.certifications ?? [])];
+    certifications[i] = { ...certifications[i], [k]: v };
+    setData({ ...data, certifications });
+  };
+  const addCert = () =>
+    setData({
+      ...data,
+      certifications: [...(data.certifications ?? []), { name: "", issuer: "", date: "", url: "" }],
+    });
+  const removeCert = (i: number) =>
+    setData({ ...data, certifications: (data.certifications ?? []).filter((_, idx) => idx !== i) });
+
   // Styles
   const input = "w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-teal-500";
   const label = "block text-xs text-gray-400 mb-1 mt-3 font-medium";
@@ -564,6 +582,30 @@ export default function AdminEditor() {
               </div>
             );
           })}
+        </section>
+
+        {/* Certifications */}
+        <section className={card + " mt-4"}>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-base font-semibold text-teal-200">📜 Certifications</h2>
+            <button onClick={addCert} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
+          </div>
+          {(data.certifications ?? []).map((cert, i) => (
+            <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-gray-500 font-mono">#{i + 1}</span>
+                <button onClick={() => removeCert(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
+              </div>
+              <label className={label}>Name</label>
+              <input className={input} value={cert.name} onChange={(e) => updateCert(i, "name", e.target.value)} />
+              <label className={label}>Issuer</label>
+              <input className={input} value={cert.issuer} onChange={(e) => updateCert(i, "issuer", e.target.value)} />
+              <label className={label}>Date</label>
+              <input className={input} value={cert.date} onChange={(e) => updateCert(i, "date", e.target.value)} placeholder="e.g. March 2024" />
+              <label className={label}>Credential URL (kosongkan kalau tidak ada)</label>
+              <input className={input} value={cert.url ?? ""} onChange={(e) => updateCert(i, "url", e.target.value)} />
+            </div>
+          ))}
         </section>
 
         {/* Footer save */}

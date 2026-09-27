@@ -199,6 +199,7 @@ async function main() {
         })),
         experience: data.experience ?? [],
         languages: data.languages ?? [],
+        certifications: data.certifications ?? [],
         __meta: data.__meta ?? { version: 1, updated_at: new Date().toISOString() },
       };
 
