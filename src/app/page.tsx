@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import SectionNav from "./SectionNav";
+import { SECTIONS, type SectionId } from "@/lib/sections";
 import {
   getProfileData,
   groupSkillsByCategory,
@@ -36,8 +37,19 @@ const CAT_SPAN: Record<string, string> = {
 
 export default async function Home() {
   const data = await getProfileData();
-  const { profile, contact, education, skills, socials, experience, projects, languages } = data;
+  const { profile, contact, education, skills, socials, experience, projects, languages, certifications } = data;
   const skillGroups = groupSkillsByCategory(skills);
+
+  // Bagian yang benar-benar dirender. Certifications hilang saat kosong, jadi
+  // nav tidak boleh menautkan ke anchor yang tidak ada. Sisanya selalu ada.
+  //
+  // `certs` sudah dinormalkan ke array: dokumen lama tidak punya kuncinya, dan
+  // `hasCerts` (boolean) tidak menyempitkan tipe di dalam JSX.
+  const certs = certifications ?? [];
+  const hasCerts = certs.length > 0;
+  const visibleSections: SectionId[] = SECTIONS.map((s) => s.id).filter(
+    (id) => id !== "certifications" || hasCerts
+  );
 
   return (
     <div className="flex flex-col lg:flex-row min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white max-w-screen-2xl mx-auto">
@@ -75,7 +87,7 @@ export default async function Home() {
 
         {/* Section nav — rail. Sticky sidebar keeps it on screen while the
             content column scrolls, so it doubles as a reading position. */}
-        <SectionNav variant="rail" />
+        <SectionNav variant="rail" visible={visibleSections} />
 
         {/* Education */}
         <div className="mt-8">
@@ -160,7 +172,7 @@ export default async function Home() {
       <main className="flex-1 lg:overflow-y-auto p-6 md:p-10 lg:p-12">
         {/* Section nav — bar. Below `lg` the sidebar scrolls away with the
             page, so the nav re-appears pinned to the top of the column. */}
-        <SectionNav variant="bar" />
+        <SectionNav variant="bar" visible={visibleSections} />
 
         {/* About */}
         <section id="about" className="mb-16 scroll-mt-20">
@@ -395,6 +407,62 @@ export default async function Home() {
             })}
           </div>
         </section>
+
+        {/* Certifications — kartu ringkas: nama, penerbit, tanggal, plus link
+            Verify kalau ada. Sama seperti Languages, bagian ini tidak dirender
+            kalau kosong; dokumen lama bahkan tidak punya kuncinya sama sekali,
+            jadi pengecekan harus tahan undefined. */}
+        {hasCerts && (
+          <section id="certifications" className="mb-16 scroll-mt-20">
+            <div className="mb-6 flex items-baseline justify-between gap-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+                Certifications
+              </h3>
+              <span className="text-xs text-slate-500 tabular-nums">
+                {certs.length} total
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {certs.map((cert, idx) => (
+                <div
+                  key={`${cert.name}-${idx}`}
+                  className={`reveal reveal-d${(idx % 3) + 1} flex flex-col rounded-xl border border-slate-800 bg-slate-900/40 p-5 hover:border-teal-500/30 transition-colors`}
+                >
+                  <h4 className="text-base font-semibold text-white leading-snug">
+                    {cert.name}
+                  </h4>
+                  {cert.issuer && (
+                    <p className="text-sm text-teal-400 mt-1">{cert.issuer}</p>
+                  )}
+                  {cert.date && (
+                    <p className="text-xs text-slate-500 mt-1 tabular-nums">
+                      {cert.date}
+                    </p>
+                  )}
+
+                  {/* Link hanya dirender kalau URL-nya terisi, jadi tidak pernah
+                      ada tombol menuju link kosong. */}
+                  {cert.url && (
+                    <a
+                      href={cert.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Verifikasi ${cert.name}`}
+                      className="mt-4 self-start inline-flex items-center gap-1.5 text-sm text-teal-400 hover:text-teal-300 transition-colors"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.746 3.746 0 0121 12z" />
+                      </svg>
+                      Verify credential
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Footer */}
         <footer className="text-center text-xs text-slate-600 pt-8 pb-4 border-t border-slate-800">
