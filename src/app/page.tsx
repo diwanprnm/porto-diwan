@@ -88,84 +88,6 @@ export default async function Home() {
         {/* Section nav — rail. Sticky sidebar keeps it on screen while the
             content column scrolls, so it doubles as a reading position. */}
         <SectionNav variant="rail" visible={visibleSections} />
-
-        {/* Education */}
-        <div className="mt-8">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">
-            Education
-          </h3>
-          <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800">
-            <p className="text-sm font-medium text-slate-200">{education.school}</p>
-            <p className="text-xs text-slate-400 mt-1">{education.degree}</p>
-            <p className="text-xs text-teal-500 mt-1.5">{education.period}</p>
-          </div>
-        </div>
-
-        {/* Languages */}
-        {languages && languages.length > 0 && (
-          <div className="mt-6">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">
-              Languages
-            </h3>
-            <div className="space-y-2">
-              {languages.map((lang) => (
-                <div key={lang.name} className="flex justify-between items-center text-sm">
-                  <span className="text-slate-300">{lang.name}</span>
-                  <span className="text-xs text-teal-400">{lang.level}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Socials */}
-        <div className="mt-6">
-          <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">
-            Connect
-          </h3>
-          <div className="flex gap-3">
-            {socials.map((s) => (
-              <a
-                key={s.platform}
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 bg-slate-800 rounded-lg hover:bg-teal-900/50 transition-colors group"
-                title={s.platform}
-              >
-                <Image
-                  src={s.icon}
-                  alt={s.platform}
-                  width={18}
-                  height={18}
-                  unoptimized
-                  className="opacity-60 group-hover:opacity-100 transition-opacity"
-                />
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* Contact */}
-        <div className="mt-auto pt-8">
-          <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-800">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-3">
-              Contact
-            </h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex items-center gap-2 text-slate-400">
-                <svg className="w-4 h-4 text-teal-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
-                <span>{contact.location}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-teal-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
-                <a href={`mailto:${contact.email}`} className="text-teal-400 hover:text-teal-300 transition-colors break-all">
-                  {contact.email}
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
       </aside>
 
       {/* ── RIGHT CONTENT ── */}
@@ -183,6 +105,89 @@ export default async function Home() {
           <p className="text-slate-400 leading-relaxed text-[15px] max-w-3xl">
             {profile.about}
           </p>
+        </section>
+
+        {/* Detail — Education, Languages, Connect, Contact. Dulu keempatnya
+            menempel di sidebar kiri; sekarang jadi kartu di kolom konten supaya
+            sidebar cuma mengurus identitas + nav. Grid 1 kolom di mobile,
+            2 kolom dari `sm` ke atas. Kartu yang isinya kosong (Languages) tidak
+            dirender, jadi barisnya tidak menyisakan lubang. */}
+        <section aria-label="Details" className="mb-16">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Education */}
+            <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                Education
+              </h3>
+              <p className="text-sm font-medium text-slate-200">{education.school}</p>
+              <p className="text-xs text-slate-400 mt-1">{education.degree}</p>
+              <p className="text-xs text-teal-500 mt-1.5">{education.period}</p>
+            </div>
+
+            {/* Languages */}
+            {languages && languages.length > 0 && (
+              <div className="reveal reveal-d2 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                  Languages
+                </h3>
+                <div className="space-y-2">
+                  {languages.map((lang) => (
+                    <div key={lang.name} className="flex justify-between items-center text-sm">
+                      <span className="text-slate-300">{lang.name}</span>
+                      <span className="text-xs text-teal-400">{lang.level}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Connect */}
+            <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                Connect
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                {socials.map((s) => (
+                  <a
+                    key={s.platform}
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-slate-800 rounded-lg hover:bg-teal-900/50 transition-colors group"
+                    title={s.platform}
+                  >
+                    <Image
+                      src={s.icon}
+                      alt={s.platform}
+                      width={18}
+                      height={18}
+                      unoptimized
+                      className="opacity-60 group-hover:opacity-100 transition-opacity"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div className="reveal reveal-d2 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                Contact
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <svg className="w-4 h-4 text-teal-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+                  <span>{contact.location}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-teal-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                  <a href={`mailto:${contact.email}`} className="text-teal-400 hover:text-teal-300 transition-colors break-all">
+                    {contact.email}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
         {/* Skills — bento grid, lebar tile mengikuti jumlah isi */}
