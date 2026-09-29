@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import { DEFAULT_LOCALE, DICT, isLocale } from "@/lib/i18n";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -12,18 +14,42 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Diwan Purnama — Fullstack Developer",
-  description: "Portfolio & CV of Diwan Purnama, a Fullstack Developer specializing in Next.js, Laravel, and .NET.",
-};
+/**
+ * The language the middleware tagged this request with (see src/middleware.ts).
+ *
+ * Falls back to the default when the header is absent — which is the case for
+ * `/admin`, `/api`, and `/healthz`. Those paths carry no locale, and they still
+ * need a layout, so this has to answer rather than throw.
+ *
+ * `headers()` is async in Next 15, and reading it is what makes a route
+ * dynamic. Every page here is already `force-dynamic`, so this costs nothing
+ * that was not already spent; it is also why the header approach works at all
+ * — a static page would have been rendered once, with whatever language the
+ * build happened to see.
+ */
+async function requestLocale() {
+  const raw = (await headers()).get("x-locale");
+  return isLocale(raw) ? raw : DEFAULT_LOCALE;
+}
 
-export default function RootLayout({
+export async function generateMetadata(): Promise<Metadata> {
+  const lang = await requestLocale();
+  const dict = DICT[lang];
+  return {
+    title: dict.metaTitle,
+    description: dict.metaDescription,
+  };
+}
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const lang = await requestLocale();
+
   return (
-    <html lang="en">
+    <html lang={lang}>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

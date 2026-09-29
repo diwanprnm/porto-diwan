@@ -7,16 +7,24 @@ import { getPool } from "./db";
 // ada yang tahu, dan test yang menguji salinan tidak membuktikan apa pun tentang
 // kode yang benar-benar jalan.
 //
-// Nama-nama ini diteruskan ke bawah supaya pemanggil lama (src/app/page.tsx,
-// src/app/projects/[slug]/page.tsx) tidak perlu diubah.
+// Nama-nama ini diteruskan ke bawah supaya pemanggil lama
+// (src/app/[lang]/page.tsx, src/app/[lang]/projects/[slug]/page.tsx) tidak perlu
+// diubah.
 import {
   projectSlug,
   descToArray,
   groupSkillsByCategory,
   findProjectBySlug,
+  withProjectSlugs,
   imageIdFromUrl,
   imageUrlFromId,
+  pickLocalized,
+  pickLocalizedArray,
+  pickLocalizedText,
+  trimTrailingEmpty,
 } from "./pure.mjs";
+
+import { DEFAULT_LOCALE, type Locale } from "./i18n";
 
 export { projectSlug, descToArray, groupSkillsByCategory, findProjectBySlug };
 
@@ -41,6 +49,20 @@ export type Experience = {
 
 export type Project = {
   name: string;
+  /**
+   * Slug URL kanonik, dihitung dari nama INGGRIS dan TIDAK ikut diterjemahkan.
+   *
+   * Wajib, bukan opsional: slug dipakai untuk membangun dan mencocokkan URL
+   * /projects/<slug>, dan project tanpa slug berarti halaman detailnya tidak
+   * punya alamat. Yang mengisinya hanya `withProjectSlugs`, dipanggil di dalam
+   * resolveProfileData — jadi setiap `Project` (hasil terjemahan) sudah punya.
+   *
+   * `ProjectStored` dan baris mentah content/profile.json TIDAK punya slug:
+   * keduanya dibaca sebelum slug dihitung, dan slug-nya dihitung ulang dari
+   * `name` saat ditulis (lihat saveProfileData). `slugOf` di pure.mjs adalah
+   * pembaca yang aman untuk keduanya — ia jatuh ke projectSlug(project.name).
+   */
+  slug: string;
   client: string;
   image: string;
   github_url: string;
@@ -96,18 +118,163 @@ export type ProfileData = {
   __meta: { version: number; updated_at: string };
 };
 
+// ── Bentuk TERSIMPAN (dua bahasa) ──────────────────────────────────────────
+//
+// Bahasa Indonesia disimpan sebagai KEMBARAN di sebelah nilai Inggris, dengan
+// akhiran `_id` — bukan sebagai dokumen kedua. Dua alasan:
+//
+//   1. Aditif. Semua nilai yang sudah ada berbahasa Inggris, jadi tidak ada
+//      migrasi data: dokumen lama tetap valid apa adanya, dan field yang belum
+//      diterjemahkan tampil dalam bahasa Inggris, bukan kosong.
+//   2. Satu baris = satu project. Kalau dua bahasa jadi dua baris, kolom slug
+//      yang unik itu mustahil, dan `image_id`/`github_url`/`live_url` yang
+//      memang netral bahasa jadi punya dua salinan yang bisa menyimpang.
+//
+// Kembarannya OPSIONAL semua: dokumen yang belum pernah diterjemahkan tidak
+// punya kuncinya sama sekali.
+export type ExperienceStored = Experience & {
+  period_id?: string;
+  title_id?: string;
+  highlights_id?: string[];
+};
+
+export type ProjectStored = Omit<Project, "slug"> & {
+  /**
+   * Slug tidak disimpan di database — selalu dihitung ulang dari `name` saat
+   * dibaca dan saat ditulis. Opsional di sini karena data yang datang dari
+   * editor memang tidak membawanya, dan nilai yang ikut terkirim diabaikan
+   * (lihat saveProfileData: yang dipakai selalu projectSlug(p.name)).
+   */
+  slug?: string;
+  name_id?: string;
+  client_id?: string;
+  description_id?: string | string[];
+};
+
+export type LanguageStored = Language & { name_id?: string; level_id?: string };
+
+export type CertificationStored = Certification & {
+  name_id?: string;
+  issuer_id?: string;
+  date_id?: string;
+};
+
+export type ProfileDataStored = Omit<ProfileData, "experience" | "projects" | "languages" | "certifications"> & {
+  profile: ProfileData["profile"] & { title_id?: string; bio_id?: string; about_id?: string };
+  education: ProfileData["education"] & { degree_id?: string };
+  experience: ExperienceStored[];
+  projects: ProjectStored[];
+  languages?: LanguageStored[];
+  certifications?: CertificationStored[];
+};
+
 // Bagian yang disimpan sebagai satu dokumen JSONB di tabel profile_doc.
 // `projects` TIDAK termasuk — itu tabel sendiri.
-type ProfileDoc = Omit<ProfileData, "projects">;
+type ProfileDoc = Omit<ProfileDataStored, "projects">;
 
 /**
- * Baca seluruh data CV dari database.
+ * Ubah dokumen tersimpan (dua bahasa) menjadi satu bahasa.
+ *
+ * Ini satu-satunya tempat aturan "Indonesia jatuh ke Inggris" dijalankan untuk
+ * data, dan hasilnya bertipe `ProfileData` biasa — string, bukan pasangan.
+ * Halaman publik karena itu tidak perlu tahu apa-apa soal bentuk penyimpanan:
+ * `page.tsx` menerima `profile.bio` sebagai string, persis seperti sebelumnya.
+ *
+ * Fungsi murni, jadi bisa diuji tanpa database — lihat tests/pure.test.mjs.
+ */
+export function resolveProfileData(
+  stored: ProfileDataStored,
+  lang: Locale
+): ProfileData {
+  const experience: Experience[] = (stored.experience ?? []).map((e) => ({
+    period: pickLocalized(e.period, e.period_id, lang),
+    title: pickLocalized(e.title, e.title_id, lang),
+    // company & skills netral bahasa — nama perusahaan dan nama teknologi
+    // tidak diterjemahkan.
+    company: e.company,
+    highlights: pickLocalizedArray(e.highlights, e.highlights_id, lang),
+    skills: e.skills ?? [],
+  }));
+
+  // Slug dihitung DI SINI, selagi `name` masih berbahasa Inggris.
+  //
+  // Urutan ini yang penting: kalau slug dihitung sesudah pickLocalized, nama
+  // yang dipakai adalah terjemahan, dan project yang namanya diterjemahkan
+  // mendapat slug berbeda di tiap bahasa — "metagama-information-system" di
+  // Inggris, "sistem-informasi-metagama" di Indonesia. Akibatnya tautan project
+  // dari halaman Indonesia 404 di halaman Inggris.
+  const projects: Project[] = withProjectSlugs(stored.projects ?? []).map((p) => ({
+    slug: p.slug,
+    name: pickLocalized(p.name, p.name_id, lang),
+    client: pickLocalized(p.client, p.client_id, lang),
+    image: p.image,
+    github_url: p.github_url,
+    live_url: p.live_url,
+    description: pickLocalizedText(p.description, p.description_id, lang),
+    skills: p.skills ?? [],
+  }));
+
+  const languages = stored.languages?.map((l) => ({
+    name: pickLocalized(l.name, l.name_id, lang),
+    level: pickLocalized(l.level, l.level_id, lang),
+  }));
+
+  const certifications = stored.certifications?.map((c) => ({
+    name: pickLocalized(c.name, c.name_id, lang),
+    issuer: pickLocalized(c.issuer, c.issuer_id, lang),
+    date: pickLocalized(c.date, c.date_id, lang),
+    url: c.url,
+  }));
+
+  return {
+    profile: {
+      name: stored.profile.name,
+      title: pickLocalized(stored.profile.title, stored.profile.title_id, lang),
+      image: stored.profile.image,
+      bio: pickLocalized(stored.profile.bio, stored.profile.bio_id, lang),
+      about: pickLocalized(stored.profile.about, stored.profile.about_id, lang),
+    },
+    contact: stored.contact,
+    education: {
+      school: stored.education.school,
+      degree: pickLocalized(stored.education.degree, stored.education.degree_id, lang),
+      period: stored.education.period,
+      gpa: stored.education.gpa,
+    },
+    skills: stored.skills ?? [],
+    socials: stored.socials ?? [],
+    experience,
+    projects,
+    languages,
+    certifications,
+    __meta: stored.__meta,
+  };
+}
+
+/**
+ * Baca seluruh data CV dari database, sudah diterjemahkan ke `lang`.
  *
  * Bentuk nilai kembaliannya sengaja dipertahankan persis seperti versi
- * file-JSON dulu, supaya halaman publik tidak perlu tahu sumber datanya
+ * satu-bahasa dulu, supaya halaman publik tidak perlu tahu sumber datanya
  * berubah. Yang berbeda hanya isi `image`: sekarang "/api/images/<id>".
  */
-export async function getProfileData(): Promise<ProfileData> {
+export async function getProfileData(
+  lang: Locale = DEFAULT_LOCALE
+): Promise<ProfileData> {
+  const stored = await getProfileDataRaw();
+  return resolveProfileData(stored, lang);
+}
+
+/**
+ * Baca data APA ADANYA — kedua bahasa utuh, tanpa diterjemahkan.
+ *
+ * Dipakai oleh /admin, dan itu bukan pilihan gaya: kalau editor menerima hasil
+ * yang sudah diterjemahkan, menekan Save akan menulis kembali nilai bahasa
+ * Inggris ke kolom Indonesia — artinya membuka editor lalu menyimpan
+ * MENGHAPUS seluruh terjemahan. Editor harus melihat dan mengirim balik apa
+ * yang benar-benar tersimpan.
+ */
+export async function getProfileDataRaw(): Promise<ProfileDataStored> {
   const pool = getPool();
 
   const { rows: docRows } = await pool.query<{ doc: ProfileDoc }>(
@@ -132,16 +299,21 @@ export async function getProfileData(): Promise<ProfileData> {
   // string dari database) sebagai sama.
   const { rows: projRows } = await pool.query<{
     name: string;
+    name_id: string;
     client: string;
+    client_id: string;
     image_id: string | null;
     github_url: string;
     live_url: string;
     descriptions: string[];
+    descriptions_id: string[];
     skills: string[];
   }>(
     `SELECT
        p.name,
+       p.name_id,
        p.client,
+       p.client_id,
        p.image_id,
        p.github_url,
        p.live_url,
@@ -151,6 +323,11 @@ export async function getProfileData(): Promise<ProfileData> {
          '[]'::json
        ) AS descriptions,
        COALESCE(
+         (SELECT json_agg(d.body_id ORDER BY d.sort_order)
+            FROM project_descriptions d WHERE d.project_id = p.id),
+         '[]'::json
+       ) AS descriptions_id,
+       COALESCE(
          (SELECT json_agg(s.name ORDER BY s.sort_order)
             FROM project_skills s WHERE s.project_id = p.id),
          '[]'::json
@@ -159,13 +336,19 @@ export async function getProfileData(): Promise<ProfileData> {
      ORDER BY p.sort_order, p.id`
   );
 
-  const projects: Project[] = projRows.map((r) => ({
+  const projects: ProjectStored[] = projRows.map((r) => ({
     name: r.name,
+    name_id: r.name_id ?? "",
     client: r.client,
+    client_id: r.client_id ?? "",
     image: imageUrlFromId(r.image_id),
     github_url: r.github_url,
     live_url: r.live_url,
-    description: r.descriptions,
+    // Deskripsi disimpan satu paragraf per baris, dan dua bahasa dengan jumlah
+    // paragraf berbeda berbagi baris yang sama — yang lebih pendek diisi string
+    // kosong di belakang. Membuang ekor kosong mengembalikan array aslinya.
+    description: trimTrailingEmpty(r.descriptions),
+    description_id: trimTrailingEmpty(r.descriptions_id),
     skills: r.skills,
   }));
 
@@ -175,6 +358,9 @@ export async function getProfileData(): Promise<ProfileData> {
 /**
  * Simpan seluruh data CV.
  *
+ * Menerima bentuk TERSIMPAN (dua bahasa), bukan hasil terjemahan — lihat
+ * catatan di getProfileDataRaw soal kenapa itu wajib.
+ *
  * Dokumen JSONB dan tabel projects ditulis dalam SATU transaksi: kalau ada satu
  * bagian yang gagal, tidak ada yang setengah tersimpan.
  *
@@ -182,7 +368,7 @@ export async function getProfileData(): Promise<ProfileData> {
  * tanpa rujukan dibersihkan, supaya gambar yang masih dipakai tidak ikut
  * terhapus.
  */
-export async function saveProfileData(data: ProfileData): Promise<number> {
+export async function saveProfileData(data: ProfileDataStored): Promise<number> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -214,6 +400,12 @@ export async function saveProfileData(data: ProfileData): Promise<number> {
     // masuk akan terhapus (beserta deskripsi & skill-nya lewat ON DELETE
     // CASCADE).
     //
+    // Slug SELALU dihitung dari `p.name` — nama kanonik berbahasa Inggris —
+    // bukan dari nama yang sedang ditampilkan. Kalau memakai `name_id`, URL
+    // /projects/<slug> akan berbeda antar bahasa, dan mengubah terjemahan akan
+    // menghapus lalu membuat ulang baris project (karena slug-nya berubah),
+    // sehingga link lama mati.
+    //
     // Konsekuensi yang perlu diketahui: kalau nama project diubah, slug-nya ikut
     // berubah, jadi baris lama terhapus dan URL /projects/<slug> yang lama jadi
     // 404. Sama seperti perilaku versi file-JSON dulu.
@@ -231,11 +423,13 @@ export async function saveProfileData(data: ProfileData): Promise<number> {
       const slug = projectSlug(p.name);
 
       const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO projects (slug, name, client, image_id, github_url, live_url, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO projects (slug, name, name_id, client, client_id, image_id, github_url, live_url, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (slug) DO UPDATE SET
            name       = EXCLUDED.name,
+           name_id    = EXCLUDED.name_id,
            client     = EXCLUDED.client,
+           client_id  = EXCLUDED.client_id,
            image_id   = EXCLUDED.image_id,
            github_url = EXCLUDED.github_url,
            live_url   = EXCLUDED.live_url,
@@ -244,7 +438,9 @@ export async function saveProfileData(data: ProfileData): Promise<number> {
         [
           slug,
           p.name,
+          p.name_id ?? "",
           p.client ?? "",
+          p.client_id ?? "",
           imageIdFromUrl(p.image),
           p.github_url ?? "",
           p.live_url ?? "",
@@ -256,13 +452,30 @@ export async function saveProfileData(data: ProfileData): Promise<number> {
       // Deskripsi & skills ditulis ulang seluruhnya. Lebih sederhana dan pasti
       // benar dibanding mencocokkan baris satu per satu, dan jumlahnya kecil.
       await client.query("DELETE FROM project_descriptions WHERE project_id = $1", [projectId]);
-      const descriptions = descToArray(p.description)
+
+      // Kedua bahasa DISEJajarkan ke jumlah baris yang sama.
+      //
+      // Tabel ini menyimpan satu paragraf per baris dengan kunci
+      // (project_id, sort_order), jadi dua bahasa dengan jumlah paragraf
+      // berbeda tidak punya barisnya sendiri. Yang lebih pendek diisi string
+      // kosong, dan trimTrailingEmpty di getProfileDataRaw membuangnya lagi
+      // saat dibaca. Tanpa penyejajaran ini, paragraf bahasa Indonesia yang
+      // lebih banyak daripada Inggris akan terpotong diam-diam saat disimpan.
+      // `?? ""` bukan sekadar penjaga tipe: descToArray(undefined) menghasilkan
+      // [undefined], dan .trim() di bawahnya akan melempar. Project yang
+      // deskripsinya tidak pernah diisi tetap harus bisa disimpan.
+      const descEn = descToArray(p.description ?? "")
         .map((s) => s.trim())
         .filter(Boolean);
-      for (let d = 0; d < descriptions.length; d++) {
+      const descId = descToArray(p.description_id ?? "")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const descRows = Math.max(descEn.length, descId.length);
+
+      for (let d = 0; d < descRows; d++) {
         await client.query(
-          `INSERT INTO project_descriptions (project_id, sort_order, body) VALUES ($1, $2, $3)`,
-          [projectId, d, descriptions[d]]
+          `INSERT INTO project_descriptions (project_id, sort_order, body, body_id) VALUES ($1, $2, $3, $4)`,
+          [projectId, d, descEn[d] ?? "", descId[d] ?? ""]
         );
       }
 

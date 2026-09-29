@@ -24,13 +24,26 @@ type Variant = "rail" | "bar";
  * pointing at a missing anchor is a dead link — so the page passes what it
  * drew, and this list is filtered to match. Defaulting to every registered id
  * keeps the old behaviour for callers that render all of them.
+ *
+ * `labels` arrives as a prop rather than being imported. This is a client
+ * component, so anything it imports ships to the browser; importing the
+ * dictionary would put BOTH languages in every visitor's bundle to display one
+ * of them. The server page already knows the language and sends the strings it
+ * resolved — see src/lib/i18n.ts. Same reason `ariaLabel` is a prop and not the
+ * whole dictionary: the nav is read by screen readers in one language.
  */
 export default function SectionNav({
   variant = "rail",
   visible,
+  labels,
+  ariaLabel,
+  navHeading,
 }: {
   variant?: Variant;
   visible?: readonly SectionId[];
+  labels: Record<SectionId, string>;
+  ariaLabel: string;
+  navHeading: string;
 }) {
   const shown = visible
     ? SECTIONS.filter((s) => visible.includes(s.id))
@@ -68,7 +81,7 @@ export default function SectionNav({
   if (variant === "bar") {
     return (
       <nav
-        aria-label="Sections"
+        aria-label={ariaLabel}
         className="lg:hidden sticky top-0 z-20 -mx-6 md:-mx-10 mb-8 border-b border-slate-800 bg-slate-950/90 backdrop-blur px-6 md:px-10 py-3"
       >
         <ul className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -86,7 +99,7 @@ export default function SectionNav({
                       : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-teal-500/30 hover:text-teal-300"
                   }`}
                 >
-                  {s.label}
+                  {labels[s.id]}
                 </a>
               </li>
             );
@@ -97,9 +110,9 @@ export default function SectionNav({
   }
 
   return (
-    <nav aria-label="Sections" className="mt-8 hidden lg:block">
+    <nav aria-label={ariaLabel} className="mt-8 hidden lg:block">
       <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-        Sections
+        {navHeading}
       </h3>
       <ul className="space-y-0.5">
         {shown.map((s) => {
@@ -122,7 +135,7 @@ export default function SectionNav({
                     on ? "w-6 bg-teal-500" : "w-3 bg-slate-700 group-hover:bg-teal-500/60"
                   }`}
                 />
-                {s.label}
+                {labels[s.id]}
               </a>
             </li>
           );
