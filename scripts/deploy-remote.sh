@@ -62,12 +62,19 @@ fi
 
 # Tanpa pengecekan ini, deploy yang gagal akan terlihat hijau di Actions.
 #
-# Yang ditembak /en, BUKAN "/" — dan itu bukan detail. "/" sekarang hanya
-# me-redirect ke /en (lihat src/middleware.ts), jadi curl ke sana berhenti
-# sebelum satu baris data dibaca, dan deploy dengan database rusak akan lolos.
-# Halaman berbahasa-lah yang benar-benar membaca database, jadi itu yang harus
-# diuji. Alasannya sama dengan catatan di src/app/healthz/route.ts: /healthz
-# sengaja tidak menyentuh database, jadi konektivitasnya diuji di sini.
+# Yang ditembak /en, BUKAN "/" — dan itu bukan detail. "/" hanya me-redirect
+# (lihat src/middleware.ts), jadi curl ke sana berhenti sebelum satu baris data
+# dibaca, dan deploy dengan database rusak akan lolos. Halaman berbahasa-lah yang
+# benar-benar membaca database, jadi itu yang harus diuji.
+#
+# /en ditembak LANGSUNG, bukan lewat "/": ke mana "/" mengarah ditentukan baris
+# `default_locale` di tabel settings, yang bisa diubah dari /admin. Kalau health
+# check ini menembak "/", mengubah bahasa default jadi `id` akan membuat
+# pemeriksaan yang sama menempuh jalur yang berbeda — dan, kalau redirect-nya
+# bermasalah, gagal karena alasan yang tidak ada hubungannya dengan database.
+#
+# Alasannya sama dengan catatan di src/app/healthz/route.ts: /healthz sengaja
+# tidak menyentuh database, jadi konektivitasnya diuji di sini.
 for i in $(seq 1 30); do
   if curl -fsS "http://localhost:$PORT/en" >/dev/null; then
     echo "✓ OK: app hidup di port $PORT ($i percobaan)"

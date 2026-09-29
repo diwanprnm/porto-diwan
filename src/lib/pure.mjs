@@ -292,28 +292,26 @@ export function looksLikeFile(pathname) {
 }
 
 /**
- * Path saat ini dengan prefiks locale ditukar. Dipakai tombol EN ⇄ ID.
+ * Prefiks locale sebuah path, atau undefined kalau tidak ada.
  *
- * Ada di sini, bukan di komponennya, karena dua kasus batasnya mudah salah dan
- * tidak akan terlihat sampai ada yang mengkliknya:
+ * Dipakai middleware untuk memutuskan apakah sebuah URL sudah berbahasa atau
+ * belum — dan itu keputusan yang menentukan seluruh situs:
  *
- *   - "/en" (tanpa segmen sesudahnya) → "/id", BUKAN "/id/" dengan garis miring
- *     di ujung yang membuat URL-nya berbeda dari yang diharapkan.
- *   - path tanpa prefiks locale sama sekali (tautan nyasar, rute baru yang lupa
- *     diberi locale) → ditambahi prefiks, bukan dipotong segmen pertamanya.
- *     Kalau salah di sini, "proyek" jadi hilang dari URL tanpa error apa pun.
+ *   - "/english-notes" BUKAN "/en" diikuti "/glish-notes". Kecocokannya harus
+ *     persis satu segmen penuh. Kalau tidak, halaman yang kebetulan diawali
+ *     kode bahasa dianggap sudah berbahasa, tidak di-redirect, lalu 404.
+ *   - "/en" (tanpa segmen sesudahnya) tetap cocok.
+ *   - "/projects/en" TIDAK cocok: "en" di situ slug project, bukan prefiks.
+ *
+ * Ada di sini, bukan sebagai regex di middleware, karena kasus batas di atas
+ * persis jenis yang tidak akan terlihat sampai ada yang mengkliknya — dan di
+ * sini mereka ditutup oleh `npm test`.
  *
  * @param {string} pathname
- * @param {string} next
  * @param {readonly string[]} locales
- * @returns {string}
+ * @returns {string | undefined}
  */
-export function swapLocalePath(pathname, next, locales) {
-  const segments = pathname.split("/");
-  // segments[0] selalu "" untuk path berakar, jadi prefiksnya ada di [1].
-  if (segments.length > 1 && locales.includes(segments[1])) {
-    segments[1] = next;
-    return segments.join("/");
-  }
-  return `/${next}${pathname === "/" ? "" : pathname}`;
+export function localePrefix(pathname, locales) {
+  const first = /^\/([^/]+)/.exec(pathname)?.[1];
+  return first !== undefined && locales.includes(first) ? first : undefined;
 }

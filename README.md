@@ -20,15 +20,45 @@ Situs tersedia dalam **dua bahasa: Inggris (`/en`) dan Indonesia (`/id`)**.
 
 | URL | Isi |
 |---|---|
-| `/` | Redirect ke `/en` |
+| `/` | Redirect ke bahasa default (diatur di `/admin`; bawaan `/en`) |
 | `/en`, `/id` | Halaman CV per bahasa |
 | `/en/projects/<slug>`, `/id/projects/<slug>` | Detail project per bahasa |
-| `/projects/<slug>` | Redirect ke `/en/projects/<slug>` (URL sebelum dwibahasa) |
+| `/projects/<slug>` | Redirect ke bahasa default + `/projects/<slug>` (URL sebelum dwibahasa) |
 | `/admin`, `/api/*`, `/healthz` | Tidak ber-locale |
 
 Locale ditangani `src/middleware.ts`: mengarahkan path tanpa locale ke default,
 dan menitipkan header `x-locale` yang dipakai root layout untuk `<html lang>`.
 Halaman ada di `src/app/[lang]/…`; `/admin` dan route API tidak ikut dipindah.
+
+### Bahasa default
+
+Bahasa yang dibuka di `/` **bisa ditentukan dari `/admin`** — panel
+"Bahasa tampilan situs", di atas pemilih bahasa isi. Pilihannya berlaku untuk
+seluruh situs dan **langsung tersimpan** saat diklik; ia tidak ikut tombol Save,
+karena bukan bagian dari isi CV.
+
+Yang menentukan bukan tampilan itu sendiri, melainkan baris `default_locale` di
+tabel `settings` (`db/schema.sql`), yang dibaca `src/middleware.ts` tiap request
+lewat `src/lib/settings.ts` dan route `/api/settings/default-locale`.
+
+Beberapa hal yang perlu diketahui:
+
+- **Ada jeda ~10 detik.** Nilainya di-cache di proses, jadi perubahan dari admin
+  menyebar ke semua proses/instance dalam satu siklus cache. Tanpa itu, setiap
+  request halaman depan jadi satu query database hanya untuk membaca satu kata.
+- **Tidak ada di `.env`.** Middleware berjalan di Edge runtime, tempat hanya env
+  yang di-inline saat build yang terbaca — env tidak bisa jadi pengaturan yang
+  berubah tanpa deploy. Karena itu nilainya di database.
+- **Nilai asing diabaikan.** Baris itu bisa diubah lewat `psql`, dan nilai yang
+  tidak dikenal (salah ketik, sisa percobaan) diperlakukan sebagai "tidak
+  diatur", bukan diteruskan. Kalau diteruskan, middleware akan mengalihkan
+  seluruh situs ke `/<nilai itu>` dan semua URL mati.
+- **Kalau database tidak terbaca**, situs jatuh ke `DEFAULT_LOCALE` di
+  `src/lib/i18n.ts` (yaitu `en`) dan tetap tampil.
+
+Kedua bahasa selalu bisa dibuka langsung lewat `/en` dan `/id`; yang diatur di
+sini hanya ke mana `/` mengarah. Tidak ada tombol ganti bahasa di halaman publik
+— halaman per bahasa itu sendiri sudah jadi alamatnya.
 
 ### Label UI
 
@@ -87,7 +117,7 @@ docker compose run --rm portfolio npm run db:migrate
 docker compose up --build
 ```
 
-Buka http://localhost:3000 (otomatis ke `/en`), panel admin di
+Buka http://localhost:3000 (otomatis ke bahasa default, `/en`), panel admin di
 http://localhost:3000/admin (password default `admin123` — **ganti sebelum
 dipakai di server publik**, lihat bagian Environment di bawah).
 
@@ -220,7 +250,10 @@ dilemahkan supaya hijau sama saja dengan tidak ada gerbang.
 Konektivitas database diuji di tempat yang memang punya database: health check di
 `scripts/deploy-remote.sh` menembak `/en` setelah deploy, dan `/en` membaca
 database sungguhan. Yang ditembak `/en`, bukan `/`: sejak situs jadi dwibahasa,
-`/` hanya me-redirect ke `/en` dan berhenti sebelum satu baris data dibaca.
+`/` hanya me-redirect — dan ke mana ia mengarah sekarang ditentukan database,
+jadi menembak `/` berarti menguji pengaturan redirect, bukan isi CV. `/en`
+sengaja ditembak langsung supaya pemeriksaan ini tetap menguji hal yang sama
+walau bahasa defaultnya diganti ke `id`.
 
 ### Test
 
@@ -643,9 +676,9 @@ src/lib/pure.mjs           Fungsi murni (slug, deskripsi, skill, gambar, locale)
                            satu-satunya salinan; diimpor data.ts, middleware, dan
                            scripts/db.mjs
 src/lib/i18n.ts            Locale + seluruh teks UI (kunci yang kurang gagal saat tsc)
+src/lib/settings.ts        Baca/tulis preferensi situs (bahasa default) + cache-nya
 src/middleware.ts          Locale routing: path tanpa locale → default, header x-locale
 src/app/[lang]/            Halaman publik per bahasa (CV + detail project)
-src/app/LanguageSwitch.tsx Tombol EN ⇄ ID
 src/app/healthz/route.ts   GET /healthz — smoke test; sengaja tidak menyentuh database
 scripts/image-tag.sh       Isi commit → nama tag (git tree hash). Dipakai job build
 scripts/deploy-ledger.sh   Ledger artefak di server (/var/www/my-app/porto/.deploy-map):
@@ -663,6 +696,7 @@ src/app/api/upload         POST  — upload gambar
 src/app/api/images/[id]    GET   — sajikan gambar dari database
 src/app/api/profile        GET   — data untuk admin editor
 src/app/api/profile/update PUT   — simpan perubahan
+src/app/api/settings/      GET   — bahasa default (dibaca middleware) / PUT — ubah
 src/app/api/auth/login     POST  — login admin
 src/app/admin              Panel admin
 content/profile.json       Data awal (sumber seed; tidak dibaca saat runtime)

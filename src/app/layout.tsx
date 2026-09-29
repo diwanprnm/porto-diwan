@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
-import { DEFAULT_LOCALE, DICT, isLocale } from "@/lib/i18n";
+import { DICT, isLocale } from "@/lib/i18n";
+import { getDefaultLocale } from "@/lib/settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,9 +18,15 @@ const geistMono = Geist_Mono({
 /**
  * The language the middleware tagged this request with (see src/middleware.ts).
  *
- * Falls back to the default when the header is absent — which is the case for
- * `/admin`, `/api`, and `/healthz`. Those paths carry no locale, and they still
- * need a layout, so this has to answer rather than throw.
+ * Falls back to the stored default when the header is absent — which is the case
+ * for `/admin`, `/api`, and `/healthz`. Those paths carry no locale, and they
+ * still need a layout, so this has to answer rather than throw.
+ *
+ * The fallback is read from the database rather than taken from the
+ * `DEFAULT_LOCALE` constant so that `<html lang>` on `/admin` agrees with the
+ * language the public site is actually serving. Two sources would eventually
+ * disagree, and the visible symptom — a screen reader announcing the wrong
+ * language on the operator page — is the kind that never gets reported.
  *
  * `headers()` is async in Next 15, and reading it is what makes a route
  * dynamic. Every page here is already `force-dynamic`, so this costs nothing
@@ -29,7 +36,8 @@ const geistMono = Geist_Mono({
  */
 async function requestLocale() {
   const raw = (await headers()).get("x-locale");
-  return isLocale(raw) ? raw : DEFAULT_LOCALE;
+  if (isLocale(raw)) return raw;
+  return getDefaultLocale();
 }
 
 export async function generateMetadata(): Promise<Metadata> {

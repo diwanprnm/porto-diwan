@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import SectionNav from "@/app/SectionNav";
-import LanguageSwitch from "@/app/LanguageSwitch";
 import { SECTIONS, type SectionId } from "@/lib/sections";
 import {
   DEFAULT_LOCALE,
@@ -117,8 +116,6 @@ export default async function Home({
           <h2 className="text-sm text-teal-400 font-medium mt-1">
             {profile.title}
           </h2>
-
-          <LanguageSwitch current={lang} label={dict.languageSwitchAria} />
         </div>
 
         {/* Bio */}

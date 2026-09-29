@@ -92,3 +92,26 @@ CREATE TABLE IF NOT EXISTS profile_doc (
   id  INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   doc JSONB NOT NULL
 );
+
+-- ── Pengaturan situs ──────────────────────────────────────────────────────
+-- Preferensi operator yang berlaku untuk SELURUH situs (bukan per bahasa, bukan
+-- per halaman). Untuk sekarang isinya satu baris: 'default_locale'.
+--
+-- Kenapa di database dan bukan di env: nilai ini harus bisa diubah dari /admin
+-- tanpa rebuild dan tanpa restart container. Env dibaca saat proses start, jadi
+-- mengubahnya berarti deploy ulang — dan middleware berjalan di Edge runtime,
+-- yang hanya menerima nilai env yang di-inline saat build. Baris di tabel ini
+-- dibaca saat request, jadi perubahan langsung berlaku.
+--
+-- Kenapa tabel key/value dan bukan kolom di profile_doc: profile_doc adalah
+-- isi CV, dan seluruhnya ditulis ulang setiap Save dari editor. Preferensi situs
+-- yang ikut terhapus karena seseorang menyimpan CV adalah bug yang sangat sulit
+-- dilacak. Tabel terpisah tidak bisa tersentuh jalur itu.
+--
+-- `value` sengaja TEXT tanpa CHECK: skema tidak perlu tahu kode bahasa yang sah.
+-- Validasi ada di pembacanya (getDefaultLocale), dan memang harus ada di sana —
+-- baris ini bisa diubah lewat psql, jadi pembaca tidak boleh mempercayainya.
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
