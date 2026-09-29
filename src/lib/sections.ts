@@ -7,13 +7,17 @@
  *
  * Order matters. It is the reading order of the page, and the scroll-spy uses
  * it to break ties when two sections cross the detection band at once.
+ *
+ * The labels are NOT here. They are per-language, so they live in
+ * src/lib/i18n.ts (`sectionLabels`) — a nav label is UI text, and UI text has
+ * exactly one home. This file stays language-neutral: ids, order, nothing else.
  */
 export const SECTIONS = [
-  { id: "about", label: "About" },
-  { id: "skills", label: "Skills" },
-  { id: "experience", label: "Experience" },
-  { id: "projects", label: "Projects" },
-  { id: "certifications", label: "Certifications" },
+  { id: "about" },
+  { id: "skills" },
+  { id: "experience" },
+  { id: "projects" },
+  { id: "certifications" },
 ] as const;
 
 export type SectionId = (typeof SECTIONS)[number]["id"];

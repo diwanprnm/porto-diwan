@@ -5,12 +5,72 @@ project) disimpan di **PostgreSQL**, dan gambar (foto profil, ikon socials,
 screenshot project) disimpan sebagai **BLOB di dalam database** — bukan file di
 disk. Jadi backup cukup satu dump database.
 
+Situs tersedia dalam **dua bahasa: Inggris (`/en`) dan Indonesia (`/id`)**.
+
 ## Stack
 
 - Next.js 15 (App Router) + React 19 + TypeScript
 - Tailwind CSS v4
 - PostgreSQL 17, driver `pg`
 - Auth admin: cookie JWT (`jose`) + bcrypt
+
+## Bahasa (i18n)
+
+### URL
+
+| URL | Isi |
+|---|---|
+| `/` | Redirect ke `/en` |
+| `/en`, `/id` | Halaman CV per bahasa |
+| `/en/projects/<slug>`, `/id/projects/<slug>` | Detail project per bahasa |
+| `/projects/<slug>` | Redirect ke `/en/projects/<slug>` (URL sebelum dwibahasa) |
+| `/admin`, `/api/*`, `/healthz` | Tidak ber-locale |
+
+Locale ditangani `src/middleware.ts`: mengarahkan path tanpa locale ke default,
+dan menitipkan header `x-locale` yang dipakai root layout untuk `<html lang>`.
+Halaman ada di `src/app/[lang]/…`; `/admin` dan route API tidak ikut dipindah.
+
+### Label UI
+
+Seluruh teks antarmuka (judul section, label nav, tombol, aria-label, footer)
+ada di **satu tempat**: `src/lib/i18n.ts`. Objek Indonesia dianotasi dengan tipe
+turunan dari objek Inggris, jadi kunci yang kurang atau salah ketik **gagal saat
+`tsc`**, bukan tampil kosong di produksi. `src/lib/sections.ts` sengaja hanya
+menyimpan `id` dan urutan — labelnya per bahasa, jadi bukan tempatnya.
+
+### Isi CV
+
+Bahasa Indonesia disimpan sebagai **kolom kembaran berakhiran `_id`** di sebelah
+nilai Inggris, bukan sebagai dokumen kedua:
+
+- Di `profile_doc` (JSONB): `profile.title_id`, `experience[].highlights_id`, dst.
+- Di `projects`: kolom `name_id`, `client_id`, `body_id` (`db/schema.sql`).
+
+Bentuk ini aditif, jadi **tidak ada migrasi data**: nilai yang sudah ada tetap
+jadi versi Inggris, dan kolom `_id` yang kosong berarti "belum diterjemahkan" —
+pembaca jatuh ke Inggris (`pickLocalized` di `src/lib/pure.mjs`).
+
+**Slug URL selalu dihitung dari nama Inggris**, sekali, sebelum nama diterjemahkan
+(`withProjectSlugs` di `src/lib/pure.mjs`). Hasilnya disimpan sebagai field `slug`
+pada tiap project, dan itulah yang dipakai untuk membangun URL — bukan
+`projectSlug(project.name)`, karena `name` di halaman sudah berupa terjemahan.
+
+Ini bukan detail gaya: `projectSlug(p.name)` juga kunci `ON CONFLICT (slug)`, dan
+project seperti "Metagama Information System" → "Sistem Informasi Metagama"
+menghasilkan slug yang **berbeda** kalau dihitung dari nama terjemahan. Kalau itu
+terjadi, tautan project dari halaman Indonesia 404 di halaman Inggris. Ada test
+khusus untuk invarian ini di `tests/pure.test.mjs`.
+
+### Mengisi terjemahan
+
+Lewat `/admin`: ada pemilih **English / Indonesia** di atas form. Kolom yang
+netral bahasa (nama, email, URL, nama teknologi) tidak ikut berubah saat pilihan
+diganti. Saat mengisi tab Indonesia, teks Inggrisnya muncul sebagai placeholder
+abu-abu — kolom yang dibiarkan kosong akan memakai teks Inggris itu di situs.
+
+Terjemahan awal ada di `content/profile.json` sebagai kunci `*_id`, dan dipakai
+saat seed database kosong. Kalau database sudah berisi data, seed dilewati —
+isi terjemahannya lewat `/admin`.
 
 ## Menjalankan
 
@@ -27,9 +87,9 @@ docker compose run --rm portfolio npm run db:migrate
 docker compose up --build
 ```
 
-Buka http://localhost:3000, panel admin di http://localhost:3000/admin
-(password default `admin123` — **ganti sebelum dipakai di server publik**, lihat
-bagian Environment di bawah).
+Buka http://localhost:3000 (otomatis ke `/en`), panel admin di
+http://localhost:3000/admin (password default `admin123` — **ganti sebelum
+dipakai di server publik**, lihat bagian Environment di bawah).
 
 ### Lokal tanpa Docker
 
@@ -44,7 +104,7 @@ npm run dev
 
 ## Database
 
-Empat tabel (`db/schema.sql`):
+Lima tabel (`db/schema.sql`):
 
 | Tabel | Isi |
 |---|---|
@@ -69,10 +129,12 @@ Edit `db/schema.sql`, lalu jalankan `npm run db:migrate` lagi. File itu memakai
 
 ### Kalau mengganti nama project
 
-URL halaman detail (`/projects/[slug]`) dihitung dari nama project, bukan
-disimpan terpisah. Mengganti nama berarti slug-nya berubah, baris lama terhapus,
-dan **link lama ke project itu jadi 404**. Kalau perlu URL yang stabil, tambahkan
-kolom `slug` yang diisi manual.
+URL halaman detail (`/[lang]/projects/[slug]`) dihitung dari **nama Inggris**
+project, bukan disimpan terpisah dan bukan dari nama terjemahan (lihat
+`withProjectSlugs`). Mengganti nama versi Inggris berarti slug-nya berubah, baris
+lama terhapus, dan **link lama ke project itu jadi 404**. Mengganti nama versi
+Indonesia tidak mengubah URL. Kalau perlu URL yang stabil, tambahkan kolom `slug`
+yang diisi manual.
 
 ## Gambar
 
@@ -156,8 +218,9 @@ Akibatnya orang akan melemahkan pemeriksaannya supaya hijau, dan gerbang yang
 dilemahkan supaya hijau sama saja dengan tidak ada gerbang.
 
 Konektivitas database diuji di tempat yang memang punya database: health check di
-`scripts/deploy-remote.sh` menembak `/` setelah deploy, dan `/` membaca database
-sungguhan.
+`scripts/deploy-remote.sh` menembak `/en` setelah deploy, dan `/en` membaca
+database sungguhan. Yang ditembak `/en`, bukan `/`: sejak situs jadi dwibahasa,
+`/` hanya me-redirect ke `/en` dan berhenti sebelum satu baris data dibaca.
 
 ### Test
 
@@ -576,8 +639,13 @@ satu baris per entri supaya bisa dibaca dan disunting manusia tanpa perkakas.
 .github/workflows/cicd.yml Pipeline: develop → staging (test+build+smoke+deploy) → main (deploy)
                            Deploy-nya memakai appleboy/scp-action + appleboy/ssh-action
 tests/pure.test.mjs        Test perilaku fungsi murni, dijalankan `node --test`
-src/lib/pure.mjs           Fungsi murni (slug, deskripsi, skill, gambar) — satu-satunya
-                           salinan; diimpor data.ts dan scripts/db.mjs
+src/lib/pure.mjs           Fungsi murni (slug, deskripsi, skill, gambar, locale) —
+                           satu-satunya salinan; diimpor data.ts, middleware, dan
+                           scripts/db.mjs
+src/lib/i18n.ts            Locale + seluruh teks UI (kunci yang kurang gagal saat tsc)
+src/middleware.ts          Locale routing: path tanpa locale → default, header x-locale
+src/app/[lang]/            Halaman publik per bahasa (CV + detail project)
+src/app/LanguageSwitch.tsx Tombol EN ⇄ ID
 src/app/healthz/route.ts   GET /healthz — smoke test; sengaja tidak menyentuh database
 scripts/image-tag.sh       Isi commit → nama tag (git tree hash). Dipakai job build
 scripts/deploy-ledger.sh   Ledger artefak di server (/var/www/my-app/porto/.deploy-map):
@@ -588,7 +656,8 @@ docker-compose.prod.yml    Compose untuk server; satu file, dibedakan oleh -p da
 db/schema.sql              Skema database
 scripts/db.mjs             Migrasi + seed (dari content/profile.json)
 src/lib/db.ts              Pool koneksi Postgres
-src/lib/data.ts            Baca/tulis data CV (getProfileData, saveProfileData)
+src/lib/data.ts            Baca/tulis data CV (getProfileData, getProfileDataRaw,
+                           resolveProfileData, saveProfileData)
 src/lib/auth.ts            JWT + bcrypt
 src/app/api/upload         POST  — upload gambar
 src/app/api/images/[id]    GET   — sajikan gambar dari database

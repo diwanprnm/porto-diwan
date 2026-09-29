@@ -2,9 +2,12 @@
   "profile": {
     "name": "Diwan Purnama",
     "title": "Fullstack Developer",
+    "title_id": "Fullstack Developer",
     "image": "/image/diwan2.png",
     "bio": "I build high-performance, scalable web applications with clean architecture — from backend APIs to polished frontend interfaces.",
-    "about": "I'm a Fullstack Developer with 2+ years of experience building enterprise-grade web applications. Proficient across JavaScript (Next.js, React), PHP (Laravel), and C# (.NET Core/ASP.NET) ecosystems. I deliver clean, testable code backed by solid database design (PostgreSQL, MySQL) and DevOps fundamentals (Docker, CI/CD). Currently working on RFID-based warehouse systems and government asset management platforms. I thrive in agile teams with Git, Jira, and SonarQube-driven quality gates."
+    "bio_id": "Saya membangun aplikasi web yang cepat dan skalabel dengan arsitektur yang bersih — dari API backend sampai antarmuka frontend yang rapi.",
+    "about": "I'm a Fullstack Developer with 2+ years of experience building enterprise-grade web applications. Proficient across JavaScript (Next.js, React), PHP (Laravel), and C# (.NET Core/ASP.NET) ecosystems. I deliver clean, testable code backed by solid database design (PostgreSQL, MySQL) and DevOps fundamentals (Docker, CI/CD). Currently working on RFID-based warehouse systems and government asset management platforms. I thrive in agile teams with Git, Jira, and SonarQube-driven quality gates.",
+    "about_id": "Saya Fullstack Developer dengan pengalaman 2+ tahun membangun aplikasi web kelas enterprise. Menguasai ekosistem JavaScript (Next.js, React), PHP (Laravel), dan C# (.NET Core/ASP.NET). Saya menghasilkan kode yang bersih dan mudah diuji, ditopang desain basis data yang solid (PostgreSQL, MySQL) serta dasar-dasar DevOps (Docker, CI/CD). Saat ini mengerjakan sistem gudang berbasis RFID dan platform manajemen aset pemerintah. Saya nyaman bekerja di tim agile dengan Git, Jira, dan gerbang kualitas berbasis SonarQube."
   },
   "contact": {
     "location": "Bandung, Indonesia",
@@ -15,6 +18,7 @@
   "education": {
     "school": "Politeknik Negeri Bandung (POLBAN)",
     "degree": "Associate Degree (D3) — Computer Engineering",
+    "degree_id": "Ahli Madya (D3) — Teknik Komputer",
     "period": "2021 - 2024",
     "gpa": ""
   },
@@ -64,7 +68,9 @@
   "experience": [
     {
       "period": "October 2024 — Present",
+      "period_id": "Oktober 2024 — Sekarang",
       "title": "Programmer",
+      "title_id": "Programmer",
       "company": "PT Nuansa Cerah Informasi (NCI)",
       "highlights": [
         "Architected and developed a full-stack RFID-based Warehouse Management System (WMS) using Next.js, delivering real-time inventory tracking and RFID tag integration.",
@@ -73,27 +79,48 @@
         "Enforced code quality standards through white-box testing with SonarQube and E2E tests with Cypress.",
         "Containerized development environments with Docker and managed sprints via Jira/Scrum."
       ],
+      "highlights_id": [
+        "Merancang dan membangun Warehouse Management System (WMS) berbasis RFID full-stack dengan Next.js, menghadirkan pelacakan stok real-time dan integrasi tag RFID.",
+        "Membangun RESTful API untuk siklus hidup RFID WMS (registrasi, scan, pencocokan tag, pelaporan) dengan PostgreSQL.",
+        "Membangun Asset Management System (modul penganggaran) dengan ASP.NET MVC dan mengoptimalkan API backend di .NET Core.",
+        "Menegakkan standar kualitas kode melalui white-box testing dengan SonarQube dan E2E test dengan Cypress.",
+        "Mengemas lingkungan pengembangan dengan Docker dan mengelola sprint lewat Jira/Scrum."
+      ],
       "skills": ["Next.js", "TypeScript", "React", "C#", ".NET Core", "ASP.NET", "PostgreSQL", "TailwindCSS", "Docker", "SonarQube", "Cypress", "Jira"]
     },
     {
       "period": "October — December 2023",
+      "period_id": "Oktober — Desember 2023",
       "title": "Backend Developer (Freelance)",
+      "title_id": "Backend Developer (Freelance)",
       "company": "PT AKSII",
       "highlights": [
         "Resolved critical backend bugs for Yayasan Sekar Telkom web platform (Laravel + MySQL).",
         "Authored comprehensive REST API documentation to streamline frontend-backend integration.",
         "Delivered frontend support (Vue.js) for Yayasan Sekar Telkom feature rollout."
       ],
+      "highlights_id": [
+        "Menyelesaikan bug backend kritis pada platform web Yayasan Sekar Telkom (Laravel + MySQL).",
+        "Menyusun dokumentasi REST API yang lengkap untuk mempermudah integrasi frontend dan backend.",
+        "Memberikan dukungan frontend (Vue.js) untuk peluncuran fitur Yayasan Sekar Telkom."
+      ],
       "skills": ["Laravel", "PHP", "Vue.js", "MySQL", "GitLab"]
     },
     {
       "period": "July — October 2022",
+      "period_id": "Juli — Oktober 2022",
       "title": "Frontend Developer (Internship)",
+      "title_id": "Frontend Developer (Magang)",
       "company": "PT AKSII",
       "highlights": [
         "Developed a telecommunication device testing web app for PT Telkom using Laravel + Bootstrap.",
         "Implemented email-based OTP verification, strengthening system authentication security.",
         "Built Pre-Function Test Technical Meeting module and device functionality testing features."
+      ],
+      "highlights_id": [
+        "Membangun aplikasi web pengujian perangkat telekomunikasi untuk PT Telkom dengan Laravel + Bootstrap.",
+        "Menerapkan verifikasi OTP berbasis email, memperkuat keamanan autentikasi sistem.",
+        "Membangun modul Pre-Function Test Technical Meeting dan fitur pengujian fungsionalitas perangkat."
       ],
       "skills": ["Laravel", "PHP", "MySQL", "Bootstrap", "GitLab", "Docker"]
     }
@@ -101,7 +128,9 @@
   "projects": [
     {
       "name": "Diarvis — Regional Asset Management",
+      "name_id": "Diarvis — Manajemen Aset Regional",
       "client": "Bandung Regency Government",
+      "client_id": "Pemerintah Kabupaten Bandung",
       "image": "/image/webdiarvis.png",
       "github_url": "https://github.com/diwanprnm/Diarvis/tree/diwan",
       "live_url": "",
@@ -110,11 +139,18 @@
         "Built full CRUD workflows for master asset data: create, read, update, delete, and detailed views.",
         "Integrated PostgreSQL for robust relational data modeling of government asset hierarchies."
       ],
+      "description_id": [
+        "Merancang dan membangun aplikasi web manajemen aset regional yang menyeluruh untuk Kabupaten Bandung menggunakan Laravel.",
+        "Membangun alur CRUD lengkap untuk data aset induk: tambah, lihat, ubah, hapus, dan tampilan detail.",
+        "Mengintegrasikan PostgreSQL untuk pemodelan data relasional hierarki aset pemerintah yang kokoh."
+      ],
       "skills": ["Laravel", "PHP", "PostgreSQL", "GitLab", "jQuery", "Ajax"]
     },
     {
       "name": "Telkom Test House",
+      "name_id": "Telkom Test House",
       "client": "PT Telkom Indonesia",
+      "client_id": "PT Telkom Indonesia",
       "image": "/image/tth.png",
       "github_url": "https://github.com/diwanprnm/Telkom-Test-House",
       "live_url": "",
@@ -123,11 +159,18 @@
         "Engineered an email-based OTP verification system for secure test-result access.",
         "Developed functional testing and Technical Meeting Pre-Functional Test modules."
       ],
+      "description_id": [
+        "Membangun aplikasi web yang mendukung alur pengujian sertifikasi perangkat telekomunikasi di PT Telkom.",
+        "Merancang sistem verifikasi OTP berbasis email untuk akses hasil pengujian yang aman.",
+        "Membangun modul pengujian fungsional dan Technical Meeting Pre-Functional Test."
+      ],
       "skills": ["Laravel", "PHP", "MySQL", "GitLab", "Docker", "Bootstrap"]
     },
     {
       "name": "PLN Successor",
+      "name_id": "PLN Successor",
       "client": "PT PLN (State Electricity Company)",
+      "client_id": "PT PLN (Perusahaan Listrik Negara)",
       "image": "/image/rankweb.png",
       "github_url": "https://github.com/diwanprnm/PLN-Successor",
       "live_url": "",
@@ -136,21 +179,29 @@
         "Designed normalized PostgreSQL database schema for promotion tracking and approval workflows.",
         "Documented REST API specifications enabling smooth handoff between frontend and backend teams."
       ],
+      "description_id": [
+        "Membangun sistem manajemen kenaikan jabatan untuk proses SDM internal PT PLN menggunakan Laravel.",
+        "Merancang skema basis data PostgreSQL yang ternormalisasi untuk pelacakan promosi dan alur persetujuan.",
+        "Mendokumentasikan spesifikasi REST API sehingga serah terima antara tim frontend dan backend berjalan lancar."
+      ],
       "skills": ["Laravel", "React.js", "PostgreSQL", "Strapi", "GitLab"]
     },
     {
       "name": "Metagama Information System",
+      "name_id": "Sistem Informasi Metagama",
       "client": "POLBAN (Bandung State Polytechnic)",
+      "client_id": "POLBAN (Politeknik Negeri Bandung)",
       "image": "/image/metagama.jpeg",
       "github_url": "",
       "live_url": "",
       "description": "A web-based administrative system for Metagama's religious mentoring program at POLBAN. Built to digitize participant and group data management — replacing paper-based records with structured CRUD operations. Manages participant registration, group assignments, attendance tracking, and reporting for hundreds of students across multiple mentoring cycles.",
+      "description_id": "Sistem administrasi berbasis web untuk program mentoring keagamaan Metagama di POLBAN. Dibangun untuk mendigitalkan pengelolaan data peserta dan kelompok — menggantikan pencatatan berbasis kertas dengan operasi CRUD yang terstruktur. Mengelola pendaftaran peserta, pembagian kelompok, pelacakan kehadiran, dan pelaporan untuk ratusan mahasiswa di beberapa siklus mentoring.",
       "skills": ["Laravel", "PHP", "MySQL", "GitLab", "Docker", "Bootstrap"]
     }
   ],
   "languages": [
-    {"name": "Indonesian", "level": "Native"},
-    {"name": "English", "level": "Professional Working"}
+    {"name": "Indonesian", "name_id": "Indonesia", "level": "Native", "level_id": "Penutur Asli"},
+    {"name": "English", "name_id": "Inggris", "level": "Professional Working", "level_id": "Mahir Profesional"}
   ],
   "certifications": [],
   "__meta": {

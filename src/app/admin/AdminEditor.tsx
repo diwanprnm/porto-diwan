@@ -8,7 +8,8 @@ import { useState, useEffect, useRef } from "react";
 // halaman ini crash dan berpotensi merusak data saat disimpan.
 // `import type` penting di sini: lib/data membaca file lewat "fs", yang tidak boleh
 // ikut ke bundle client. Import tipe dihapus saat build, jadi aman.
-import type { ProfileData, Skill } from "@/lib/data";
+import type { ProfileDataStored, Skill } from "@/lib/data";
+import type { Locale } from "@/lib/i18n";
 // descToArray diimpor dari pure.mjs, bukan disalin seperti sebelumnya.
 //
 // Komentar lama di sini menyebut alasan menyalin: lib/data.ts memakai "fs",
@@ -54,6 +55,27 @@ function cleanTextArray(parts: string[]): string[] {
  * jadi keduanya tidak mungkin berbeda tanpa ketahuan.
  */
 const DESC_SEP = "\n";
+
+/**
+ * Baca satu field dengan kunci yang baru diketahui saat runtime.
+ *
+ * Kunci itu ditentukan bahasa aktif (`foo` atau `foo_id`), jadi tidak ada cara
+ * menuliskannya secara statis. Helper ini mengurung satu-satunya `as` di file
+ * ini, supaya pembacaan field di seluruh komponen tetap bebas cast.
+ *
+ * Parameternya `object` dan bukan `Record<string, unknown>` dengan sengaja:
+ * `object` menerima semua bentuk data di sini, termasuk `ProjectStored` yang
+ * berupa irisan dengan `Omit<…>` (mapped type). `Record<string, unknown>` tidak
+ * dijamin menerima mapped type — index signature-nya tidak dibuat otomatis
+ * untuk tipe hasil `Omit`, sehingga pemanggilnya bisa gagal typecheck.
+ *
+ * Nilai kembaliannya `unknown`, bukan `any`: pemanggil WAJIB mempersempitnya
+ * (di sini selalu `as string | undefined`), jadi tidak ada `any` yang menyebar
+ * diam-diam lewat helper ini.
+ */
+function fields(obj: object): Record<string, unknown> {
+  return obj as unknown as Record<string, unknown>;
+}
 
 /**
  * Upload gambar.
@@ -176,10 +198,15 @@ function ImageField({
 }
 
 export default function AdminEditor() {
-  const [data, setData] = useState<ProfileData | null>(null);
+  const [data, setData] = useState<ProfileDataStored | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  // Bahasa yang sedang diedit. Ini BUKAN bahasa tampilan situs — ini pilihan
+  // kolom mana yang sedang diisi. Situs selalu menampilkan keduanya sekaligus
+  // (satu per URL), jadi editor harus bisa mengisi keduanya.
+  const [lang, setLang] = useState<Locale>("en");
 
   useEffect(() => {
     fetch("/api/profile")
@@ -224,13 +251,79 @@ export default function AdminEditor() {
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">Loading...</div>;
   if (!data) return <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">Gagal memuat data.</div>;
 
+  // ── Terjemahan: kunci kolom, baca, dan placeholder ──────────────────────
+  //
+  // Bahasa Indonesia disimpan sebagai kolom kembaran berakhiran `_id` di
+  // sebelah nilai Inggris (lihat ProfileDataStored di lib/data.ts). Tiga helper
+  // di bawah adalah SATU-SATUNYA tempat aturan itu ditulis di file ini.
+  //
+  // `locKey`  — kolom mana yang ditulis/dibaca untuk bahasa aktif.
+  // `loc`     — nilai untuk bahasa aktif. Kosong kalau belum diterjemahkan.
+  // `ph`      — nilai Inggris sebagai placeholder saat mengisi bahasa Indonesia.
+  //
+  // Placeholder itu penting untuk alur kerjanya, bukan hiasan: tanpa melihat
+  // teks Inggrisnya, penerjemah tidak tahu apa yang harus diterjemahkan, dan
+  // kolom kosong terlihat seperti data hilang alih-alih "belum diisi".
+  //
+  // Parameternya `object`, bukan `Record<string, unknown>`, dan itu bukan
+  // kelonggaran: kuncinya baru diketahui saat runtime (ditentukan bahasa aktif),
+  // jadi aksesnya memang dinamis. Yang penting, `object` menerima SEMUA tipe
+  // data di sini termasuk `ProjectStored` yang berbentuk irisan dengan `Omit<…>`
+  // (mapped type) — sedangkan `Record<string, unknown>` tidak dijamin menerima
+  // mapped type. Pelebaran tipe sengaja dikurung di dalam helper ini saja:
+  // pemanggil tetap menerima `string`, bukan `unknown`.
+  const locKey = (k: string) => (lang === "id" ? `${k}_id` : k);
+
+  const loc = (obj: object, k: string): string =>
+    (fields(obj)[locKey(k)] as string | undefined) ?? "";
+
+  const ph = (obj: object, k: string): string | undefined =>
+    lang === "id" ? ((fields(obj)[k] as string | undefined) ?? "") : undefined;
+
+  // Array teks untuk bahasa aktif.
+  //
+  // Lewat descToArray, bukan `Array.isArray(v) ? v : []`: `description` boleh
+  // berbentuk STRING tunggal (project "Metagama Information System" di seed).
+  // Dengan pemeriksaan Array saja, nilai string itu menghasilkan array kosong —
+  // textarea Description tampil kosong padahal isinya ada, dan mengetik satu
+  // huruf di situ menimpa seluruh deskripsi aslinya. Bentuk string adalah bentuk
+  // yang sah di sini, bukan data yang rusak.
+  const locArr = (obj: object, k: string): string[] =>
+    descToArray((fields(obj)[locKey(k)] as string | string[] | undefined) ?? "");
+
+  const phArr = (obj: object, k: string): string | undefined =>
+    lang === "id"
+      ? descToArray((fields(obj)[k] as string | string[] | undefined) ?? "").join(DESC_SEP)
+      : undefined;
+
   // ── Setters ──
-  const updateProfile = (k: keyof ProfileData["profile"], v: string) =>
+  //
+  // Dua bentuk, dan bedanya penting:
+  //
+  //   updateX(...)         → field PROSA. Ditulis ke `k` atau `k_id` sesuai
+  //                          bahasa yang sedang diedit (locKey).
+  //   updateXNeutral(...)  → field NETRAL BAHASA (nama orang, email, URL, nama
+  //                          teknologi). Selalu ditulis ke `k` apa adanya.
+  //
+  // Dipisah jadi dua fungsi, bukan satu fungsi ber-flag, supaya kekeliruannya
+  // punya arah yang AMAN. Kalau field netral keliru memakai versi localized,
+  // yang tersimpan adalah kunci `foo_id` yang tidak dikenal dan penyuntingan
+  // tampak tidak berefek — kelihatan saat dicoba. Kalau dibalik (default
+  // netral), field prosa yang lupa ditandai akan MENIMPA teks Inggris tanpa
+  // error apa pun, dan itu kerusakan data yang baru ketahuan setelah lama.
+  const updateProfile = (k: string, v: string) =>
+    setData({ ...data, profile: { ...data.profile, [locKey(k)]: v } });
+  const updateProfileNeutral = (k: string, v: string) =>
     setData({ ...data, profile: { ...data.profile, [k]: v } });
-  // contact ada di root ProfileData, bukan di dalam profile.
+
+  // contact ada di root ProfileData, bukan di dalam profile. Netral bahasa —
+  // alamat email dan lokasi tidak diterjemahkan, jadi tidak ada versi localized.
   const updateContact = (k: string, v: string) =>
     setData({ ...data, contact: { ...data.contact, [k]: v } });
+
   const updateEducation = (k: string, v: string) =>
+    setData({ ...data, education: { ...data.education, [locKey(k)]: v } });
+  const updateEducationNeutral = (k: string, v: string) =>
     setData({ ...data, education: { ...data.education, [k]: v } });
 
   // Skills: array {name, category}. Editor menampilkan "name (category)" per
@@ -246,6 +339,8 @@ export default function AdminEditor() {
   // TANPA trim dan TANPA filter(Boolean) — membersihkan di onChange menghapus
   // karakter yang sedang diketik, persis bug yang sama dengan kolom lain.
   // Pembersihannya ada di trimSkills, dipanggil dari onBlur.
+  //
+  // Nama teknologi netral bahasa, jadi daftar ini tidak punya versi Indonesia.
   const parseSkillLines = (v: string): Skill[] =>
     v.split("\n").map((line) => {
       const m = line.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
@@ -264,7 +359,7 @@ export default function AdminEditor() {
         .filter((s) => s.name),
     });
 
-  // Socials
+  // Socials — netral bahasa.
   const updateSocial = (i: number, k: string, v: string) => {
     const socials = [...data.socials];
     socials[i] = { ...socials[i], [k]: v };
@@ -273,6 +368,12 @@ export default function AdminEditor() {
 
   // Experience
   const updateExp = (i: number, k: string, v: string) => {
+    const exp = [...data.experience];
+    exp[i] = { ...exp[i], [locKey(k)]: v };
+    setData({ ...data, experience: exp });
+  };
+  // Nama perusahaan tidak diterjemahkan.
+  const updateExpNeutral = (i: number, k: string, v: string) => {
     const exp = [...data.experience];
     exp[i] = { ...exp[i], [k]: v };
     setData({ ...data, experience: exp });
@@ -283,14 +384,20 @@ export default function AdminEditor() {
   // ExpHighlights split("\n") ↔ JSX join("\n"), ExpSkills split(",") ↔ JSX
   // join(", "). Pembersihan (trim + buang elemen kosong) ada di handler *Trim di
   // bawah, yang dipanggil dari onBlur. Lihat cleanTextArray untuk alasannya.
+  //
+  // Highlights diterjemahkan (satu baris per poin), skills tidak (nama
+  // teknologi).
   const updateExpHighlights = (i: number, v: string) => {
     const exp = [...data.experience];
-    exp[i] = { ...exp[i], highlights: v.split("\n") };
+    exp[i] = { ...exp[i], [locKey("highlights")]: v.split("\n") };
     setData({ ...data, experience: exp });
   };
   const trimExpHighlights = (i: number) => {
     const exp = [...data.experience];
-    exp[i] = { ...exp[i], highlights: cleanTextArray(exp[i].highlights) };
+    exp[i] = {
+      ...exp[i],
+      [locKey("highlights")]: cleanTextArray(locArr(exp[i], "highlights")),
+    };
     setData({ ...data, experience: exp });
   };
   const updateExpSkills = (i: number, v: string) => {
@@ -314,6 +421,12 @@ export default function AdminEditor() {
   // Projects
   const updateProj = (i: number, k: string, v: string) => {
     const proj = [...data.projects];
+    proj[i] = { ...proj[i], [locKey(k)]: v };
+    setData({ ...data, projects: proj });
+  };
+  // Gambar dan URL repo/demo netral bahasa.
+  const updateProjNeutral = (i: number, k: string, v: string) => {
+    const proj = [...data.projects];
     proj[i] = { ...proj[i], [k]: v };
     setData({ ...data, projects: proj });
   };
@@ -322,12 +435,22 @@ export default function AdminEditor() {
   // menghapus karakter yang sedang diketik.
   const updateProjDesc = (i: number, v: string) => {
     const proj = [...data.projects];
-    proj[i] = { ...proj[i], description: v.split(DESC_SEP) };
+    proj[i] = { ...proj[i], [locKey("description")]: v.split(DESC_SEP) };
     setData({ ...data, projects: proj });
   };
   const trimProjDesc = (i: number) => {
     const proj = [...data.projects];
-    proj[i] = { ...proj[i], description: cleanTextArray(descToArray(proj[i].description)) };
+    // `?? ""` bukan sekadar penjaga tipe: kolom description boleh string
+    // tunggal, array, atau belum ada sama sekali (project yang baru ditambah
+    // lewat tombol "+ Add" mulai dari array kosong). descToArray tidak menerima
+    // undefined.
+    const raw = fields(proj[i])[locKey("description")];
+    proj[i] = {
+      ...proj[i],
+      [locKey("description")]: cleanTextArray(
+        descToArray((raw as string | string[] | undefined) ?? "")
+      ),
+    };
     setData({ ...data, projects: proj });
   };
   const updateProjSkills = (i: number, v: string) => {
@@ -360,6 +483,12 @@ export default function AdminEditor() {
   // melempar error dan halaman admin gagal memuat.
   const updateCert = (i: number, k: string, v: string) => {
     const certifications = [...(data.certifications ?? [])];
+    certifications[i] = { ...certifications[i], [locKey(k)]: v };
+    setData({ ...data, certifications });
+  };
+  // URL sertifikat netral bahasa.
+  const updateCertNeutral = (i: number, k: string, v: string) => {
+    const certifications = [...(data.certifications ?? [])];
     certifications[i] = { ...certifications[i], [k]: v };
     setData({ ...data, certifications });
   };
@@ -370,6 +499,22 @@ export default function AdminEditor() {
     });
   const removeCert = (i: number) =>
     setData({ ...data, certifications: (data.certifications ?? []).filter((_, idx) => idx !== i) });
+
+  // Languages — diterjemahkan ("Indonesian"/"Native" punya padanan Indonesia).
+  // Bagian ini sebelumnya tidak ada di editor, jadi nilainya hanya bisa diubah
+  // lewat file JSON. Karena sekarang isinya per bahasa, harus bisa disunting.
+  const updateLang = (i: number, k: string, v: string) => {
+    const languages = [...(data.languages ?? [])];
+    languages[i] = { ...languages[i], [locKey(k)]: v };
+    setData({ ...data, languages });
+  };
+  const addLang = () =>
+    setData({
+      ...data,
+      languages: [...(data.languages ?? []), { name: "", level: "" }],
+    });
+  const removeLang = (i: number) =>
+    setData({ ...data, languages: (data.languages ?? []).filter((_, idx) => idx !== i) });
 
   // Styles
   const input = "w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-1 focus:ring-teal-500";
@@ -384,7 +529,7 @@ export default function AdminEditor() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-teal-100">✏️ Admin Editor — CV</h1>
           <div className="flex gap-2">
-            <a href="/" target="_blank" className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg">View Site →</a>
+            <a href={`/${lang}`} target="_blank" className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg">View Site →</a>
             <button onClick={logout} className="px-3 py-1.5 text-sm bg-red-900 hover:bg-red-800 rounded-lg">Logout</button>
           </div>
         </div>
@@ -402,22 +547,52 @@ export default function AdminEditor() {
           <span className="ml-auto text-xs text-gray-500">v{data.__meta?.version || "?"} · {data.__meta?.updated_at ? new Date(data.__meta.updated_at).toLocaleString() : ""}</span>
         </div>
 
+        {/* Language picker.
+            Kedua bahasa disimpan bersamaan di satu dokumen, jadi ini memilih
+            kolom mana yang sedang diisi — bukan bahasa tampilan situs. Kolom
+            yang netral bahasa (nama, email, URL, nama teknologi) tidak berubah
+            saat pilihan ini diganti; itu memang disengaja. */}
+        <div className="sticky top-[60px] z-10 mb-4 flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900/95 backdrop-blur p-3">
+          <span className="text-xs font-medium text-gray-400">Bahasa isi:</span>
+          <div className="flex gap-1">
+            {(["en", "id"] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => setLang(l)}
+                aria-pressed={lang === l}
+                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors ${
+                  lang === l
+                    ? "bg-teal-600/25 text-teal-200 ring-1 ring-inset ring-teal-500/50"
+                    : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                }`}
+              >
+                {l === "en" ? "English" : "Indonesia"}
+              </button>
+            ))}
+          </div>
+          <span className="ml-auto text-[11px] text-gray-500">
+            {lang === "id"
+              ? "Kolom kosong memakai teks Inggris (terlihat abu-abu)."
+              : "Mengisi versi Inggris. Versi Indonesia diisi di tab ID."}
+          </span>
+        </div>
+
         {/* Profile section */}
         <section className={card + " mb-4"}>
           <h2 className="text-lg font-semibold text-teal-200 mb-3">Profile</h2>
           <label className={label}>Name</label>
-          <input className={input} value={data.profile.name} onChange={(e) => updateProfile("name", e.target.value)} />
+          <input className={input} value={data.profile.name} onChange={(e) => updateProfileNeutral("name", e.target.value)} />
           <label className={label}>Title</label>
-          <input className={input} value={data.profile.title} onChange={(e) => updateProfile("title", e.target.value)} />
+          <input className={input} value={loc(data.profile, "title")} placeholder={ph(data.profile, "title")} onChange={(e) => updateProfile("title", e.target.value)} />
           <ImageField
             label="Foto profil"
             value={data.profile.image}
-            onChange={(url) => updateProfile("image", url)}
+            onChange={(url) => updateProfileNeutral("image", url)}
           />
           <label className={label}>Bio (short tagline)</label>
-          <textarea className={input} rows={2} value={data.profile.bio} onChange={(e) => updateProfile("bio", e.target.value)} />
+          <textarea className={input} rows={2} value={loc(data.profile, "bio")} placeholder={ph(data.profile, "bio")} onChange={(e) => updateProfile("bio", e.target.value)} />
           <label className={label}>About (longer description)</label>
-          <textarea className={input} rows={5} value={data.profile.about} onChange={(e) => updateProfile("about", e.target.value)} />
+          <textarea className={input} rows={5} value={loc(data.profile, "about")} placeholder={ph(data.profile, "about")} onChange={(e) => updateProfile("about", e.target.value)} />
           <label className={label}>Location</label>
           <input className={input} value={data.contact.location} onChange={(e) => updateContact("location", e.target.value)} />
           <label className={label}>Email</label>
@@ -430,19 +605,19 @@ export default function AdminEditor() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
               <label className={label}>School</label>
-              <input className={input} value={data.education.school} onChange={(e) => updateEducation("school", e.target.value)} />
+              <input className={input} value={data.education.school} onChange={(e) => updateEducationNeutral("school", e.target.value)} />
             </div>
             <div>
               <label className={label}>Period</label>
-              <input className={input} value={data.education.period} onChange={(e) => updateEducation("period", e.target.value)} />
+              <input className={input} value={data.education.period} onChange={(e) => updateEducationNeutral("period", e.target.value)} />
             </div>
             <div>
               <label className={label}>Degree</label>
-              <input className={input} value={data.education.degree} onChange={(e) => updateEducation("degree", e.target.value)} />
+              <input className={input} value={loc(data.education, "degree")} placeholder={ph(data.education, "degree")} onChange={(e) => updateEducation("degree", e.target.value)} />
             </div>
             <div>
               <label className={label}>GPA (optional)</label>
-              <input className={input} value={data.education.gpa} onChange={(e) => updateEducation("gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
+              <input className={input} value={data.education.gpa} onChange={(e) => updateEducationNeutral("gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
             </div>
           </div>
         </section>
@@ -465,6 +640,7 @@ export default function AdminEditor() {
             {data.skills.length} skills. Satu per baris, format{" "}
             <code>Nama (kategori)</code> — kategori: language, framework, database,
             devops, concept. Kategori menentukan tile mana yang dipakai di halaman depan.
+            Nama teknologi tidak diterjemahkan, jadi daftar ini sama di kedua bahasa.
           </p>
         </section>
 
@@ -509,16 +685,17 @@ export default function AdminEditor() {
                 <button onClick={() => removeExp(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
               </div>
               <label className={label}>Period</label>
-              <input className={input} value={exp.period} onChange={(e) => updateExp(i, "period", e.target.value)} />
+              <input className={input} value={loc(exp, "period")} placeholder={ph(exp, "period")} onChange={(e) => updateExp(i, "period", e.target.value)} />
               <label className={label}>Title</label>
-              <input className={input} value={exp.title} onChange={(e) => updateExp(i, "title", e.target.value)} />
+              <input className={input} value={loc(exp, "title")} placeholder={ph(exp, "title")} onChange={(e) => updateExp(i, "title", e.target.value)} />
               <label className={label}>Company</label>
-              <input className={input} value={exp.company} onChange={(e) => updateExp(i, "company", e.target.value)} />
+              <input className={input} value={exp.company} onChange={(e) => updateExpNeutral(i, "company", e.target.value)} />
               <label className={label}>Highlights (satu per baris)</label>
               <textarea
                 className={input}
                 rows={6}
-                value={exp.highlights.join("\n")}
+                value={locArr(exp, "highlights").join("\n")}
+                placeholder={phArr(exp, "highlights")}
                 onChange={(e) => updateExpHighlights(i, e.target.value)}
                 onBlur={() => trimExpHighlights(i)}
               />
@@ -543,7 +720,7 @@ export default function AdminEditor() {
             // Deskripsi boleh string tunggal (Metagama) atau array (lainnya).
             // Tanpa descToArray, project berdeskripsi string jadi undefined dan
             // textarea-nya muncul kosong.
-            const descArr = descToArray(proj.description).join(DESC_SEP);
+            const descArr = locArr(proj, "description").join(DESC_SEP);
             return (
               <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
                 <div className="flex justify-between mb-2">
@@ -551,24 +728,30 @@ export default function AdminEditor() {
                   <button onClick={() => removeProj(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
                 </div>
                 <label className={label}>Name</label>
-                <input className={input} value={proj.name} onChange={(e) => updateProj(i, "name", e.target.value)} />
+                <input className={input} value={loc(proj, "name")} placeholder={ph(proj, "name")} onChange={(e) => updateProj(i, "name", e.target.value)} />
+                {/* Slug URL dihitung dari nama INGGRIS, jadi mengubah nama di
+                    tab ID tidak mengubah alamat halaman detail project. */}
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Nama versi Inggris yang menentukan URL <code>/projects/&lt;slug&gt;</code>. Mengubahnya mengubah alamat halaman detail.
+                </p>
                 <label className={label}>Client</label>
-                <input className={input} value={proj.client} onChange={(e) => updateProj(i, "client", e.target.value)} />
+                <input className={input} value={loc(proj, "client")} placeholder={ph(proj, "client")} onChange={(e) => updateProj(i, "client", e.target.value)} />
                 <ImageField
                   label="Gambar project"
                   value={proj.image}
-                  onChange={(url) => updateProj(i, "image", url)}
+                  onChange={(url) => updateProjNeutral(i, "image", url)}
                   hint="Screenshot antarmuka. Rasio lebar lebih bagus."
                 />
                 <label className={label}>GitHub URL</label>
-                <input className={input} value={proj.github_url} onChange={(e) => updateProj(i, "github_url", e.target.value)} />
+                <input className={input} value={proj.github_url} onChange={(e) => updateProjNeutral(i, "github_url", e.target.value)} />
                 <label className={label}>Live URL (kosongkan kalau tidak ada demo)</label>
-                <input className={input} value={proj.live_url ?? ""} onChange={(e) => updateProj(i, "live_url", e.target.value)} />
+                <input className={input} value={proj.live_url ?? ""} onChange={(e) => updateProjNeutral(i, "live_url", e.target.value)} />
                 <label className={label}>Description (satu paragraf per baris)</label>
                 <textarea
                   className={input}
                   rows={5}
                   value={descArr}
+                  placeholder={phArr(proj, "description")}
                   onChange={(e) => updateProjDesc(i, e.target.value)}
                   onBlur={() => trimProjDesc(i)}
                 />
@@ -597,13 +780,39 @@ export default function AdminEditor() {
                 <button onClick={() => removeCert(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
               </div>
               <label className={label}>Name</label>
-              <input className={input} value={cert.name} onChange={(e) => updateCert(i, "name", e.target.value)} />
+              <input className={input} value={loc(cert, "name")} placeholder={ph(cert, "name")} onChange={(e) => updateCert(i, "name", e.target.value)} />
               <label className={label}>Issuer</label>
-              <input className={input} value={cert.issuer} onChange={(e) => updateCert(i, "issuer", e.target.value)} />
+              <input className={input} value={loc(cert, "issuer")} placeholder={ph(cert, "issuer")} onChange={(e) => updateCert(i, "issuer", e.target.value)} />
               <label className={label}>Date</label>
-              <input className={input} value={cert.date} onChange={(e) => updateCert(i, "date", e.target.value)} placeholder="e.g. March 2024" />
+              <input className={input} value={loc(cert, "date")} placeholder={ph(cert, "date") || "e.g. March 2024"} onChange={(e) => updateCert(i, "date", e.target.value)} />
               <label className={label}>Credential URL (kosongkan kalau tidak ada)</label>
-              <input className={input} value={cert.url ?? ""} onChange={(e) => updateCert(i, "url", e.target.value)} />
+              <input className={input} value={cert.url ?? ""} onChange={(e) => updateCertNeutral(i, "url", e.target.value)} />
+            </div>
+          ))}
+        </section>
+
+        {/* Languages */}
+        <section className={card + " mt-4"}>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-base font-semibold text-teal-200">🗣️ Languages</h2>
+            <button onClick={addLang} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
+          </div>
+          {(data.languages ?? []).map((l, i) => (
+            <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-gray-500 font-mono">#{i + 1}</span>
+                <button onClick={() => removeLang(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className={label}>Language</label>
+                  <input className={input} value={loc(l, "name")} placeholder={ph(l, "name")} onChange={(e) => updateLang(i, "name", e.target.value)} />
+                </div>
+                <div>
+                  <label className={label}>Level</label>
+                  <input className={input} value={loc(l, "level")} placeholder={ph(l, "level")} onChange={(e) => updateLang(i, "level", e.target.value)} />
+                </div>
+              </div>
             </div>
           ))}
         </section>

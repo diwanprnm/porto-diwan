@@ -1,26 +1,28 @@
 import Image from "next/image";
 import Link from "next/link";
-import SectionNav from "./SectionNav";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import SectionNav from "@/app/SectionNav";
+import LanguageSwitch from "@/app/LanguageSwitch";
 import { SECTIONS, type SectionId } from "@/lib/sections";
+import {
+  DEFAULT_LOCALE,
+  DICT,
+  categoryLabel,
+  format,
+  isLocale,
+  sectionLabels,
+} from "@/lib/i18n";
 import {
   getProfileData,
   groupSkillsByCategory,
   descToArray,
-  projectSlug,
 } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
-// Label mapping untuk kategori skill (lebih rapi)
-const CAT_LABELS: Record<string, string> = {
-  language: "Languages",
-  framework: "Frameworks & Libraries",
-  database: "Databases",
-  devops: "DevOps & Tools",
-  concept: "Concepts",
-};
-
-// Order kategori
+// Order kategori. Netral bahasa — yang diterjemahkan hanya labelnya, lewat
+// categoryLabel().
 const CAT_ORDER = ["language", "framework", "database", "devops", "concept"];
 
 // Lebar tile per kategori. Peta tetap, disusun supaya kolomnya genap 12:
@@ -35,8 +37,45 @@ const CAT_SPAN: Record<string, string> = {
   concept: "lg:col-span-3",
 };
 
-export default async function Home() {
-  const data = await getProfileData();
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}): Promise<Metadata> {
+  const { lang: raw } = await params;
+  const lang = isLocale(raw) ? raw : DEFAULT_LOCALE;
+  const dict = DICT[lang];
+
+  // `alternates.languages` is what tells a search engine these two URLs are the
+  // same page in different languages. Without it the Indonesian page looks like
+  // duplicate English content rather than a translation, and only one of the
+  // two tends to get indexed.
+  return {
+    title: dict.metaTitle,
+    description: dict.metaDescription,
+    alternates: {
+      canonical: `/${lang}`,
+      languages: { en: "/en", id: "/id" },
+    },
+  };
+}
+
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang: raw } = await params;
+  // Guard, not decoration: this also runs when the route is rendered without
+  // the middleware (a direct render, a test), and an unknown locale must 404
+  // rather than silently render English under a wrong URL.
+  if (!isLocale(raw)) notFound();
+  const lang = raw;
+
+  const dict = DICT[lang];
+  const labels = sectionLabels(lang);
+
+  const data = await getProfileData(lang);
   const { profile, contact, education, skills, socials, experience, projects, languages, certifications } = data;
   const skillGroups = groupSkillsByCategory(skills);
 
@@ -78,6 +117,8 @@ export default async function Home() {
           <h2 className="text-sm text-teal-400 font-medium mt-1">
             {profile.title}
           </h2>
+
+          <LanguageSwitch current={lang} label={dict.languageSwitchAria} />
         </div>
 
         {/* Bio */}
@@ -87,20 +128,32 @@ export default async function Home() {
 
         {/* Section nav — rail. Sticky sidebar keeps it on screen while the
             content column scrolls, so it doubles as a reading position. */}
-        <SectionNav variant="rail" visible={visibleSections} />
+        <SectionNav
+          variant="rail"
+          visible={visibleSections}
+          labels={labels}
+          ariaLabel={dict.navAria}
+          navHeading={dict.navSections}
+        />
       </aside>
 
       {/* ── RIGHT CONTENT ── */}
       <main className="flex-1 lg:overflow-y-auto p-6 md:p-10 lg:p-12">
         {/* Section nav — bar. Below `lg` the sidebar scrolls away with the
             page, so the nav re-appears pinned to the top of the column. */}
-        <SectionNav variant="bar" visible={visibleSections} />
+        <SectionNav
+          variant="bar"
+          visible={visibleSections}
+          labels={labels}
+          ariaLabel={dict.navAria}
+          navHeading={dict.navSections}
+        />
 
         {/* About */}
         <section id="about" className="mb-16 scroll-mt-20">
           <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
             <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-            About
+            {dict.headingAbout}
           </h3>
           <p className="text-slate-400 leading-relaxed text-[15px] max-w-3xl">
             {profile.about}
@@ -112,12 +165,12 @@ export default async function Home() {
             sidebar cuma mengurus identitas + nav. Grid 1 kolom di mobile,
             2 kolom dari `sm` ke atas. Kartu yang isinya kosong (Languages) tidak
             dirender, jadi barisnya tidak menyisakan lubang. */}
-        <section aria-label="Details" className="mb-16">
+        <section aria-label={dict.detailsAria} className="mb-16">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Education */}
             <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
               <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
-                Education
+                {dict.cardEducation}
               </h3>
               <p className="text-sm font-medium text-slate-200">{education.school}</p>
               <p className="text-xs text-slate-400 mt-1">{education.degree}</p>
@@ -128,13 +181,19 @@ export default async function Home() {
             {languages && languages.length > 0 && (
               <div className="reveal reveal-d2 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
-                  Languages
+                  {dict.cardLanguages}
                 </h3>
                 <div className="space-y-2">
-                  {languages.map((lang) => (
-                    <div key={lang.name} className="flex justify-between items-center text-sm">
-                      <span className="text-slate-300">{lang.name}</span>
-                      <span className="text-xs text-teal-400">{lang.level}</span>
+                  {/* Variabelnya `l`, bukan `lang`: di file ini `lang` sudah
+                      berarti locale, dan memakai nama yang sama di sini akan
+                      membayanginya. Hari ini tidak berakibat apa-apa karena
+                      callback ini tidak memakai locale — tapi begitu ada yang
+                      menambahkan categoryLabel(lang, …) di dalamnya, yang
+                      terbaca adalah objek bahasa, bukan kode locale. */}
+                  {languages.map((l) => (
+                    <div key={l.name} className="flex justify-between items-center text-sm">
+                      <span className="text-slate-300">{l.name}</span>
+                      <span className="text-xs text-teal-400">{l.level}</span>
                     </div>
                   ))}
                 </div>
@@ -144,7 +203,7 @@ export default async function Home() {
             {/* Connect */}
             <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
               <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
-                Connect
+                {dict.cardConnect}
               </h3>
               <div className="flex flex-wrap gap-3">
                 {socials.map((s) => (
@@ -172,7 +231,7 @@ export default async function Home() {
             {/* Contact */}
             <div className="reveal reveal-d2 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
               <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
-                Contact
+                {dict.cardContact}
               </h3>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2 text-slate-400">
@@ -195,10 +254,10 @@ export default async function Home() {
           <div className="mb-6 flex items-baseline justify-between gap-4">
             <h3 className="text-xl font-bold text-white flex items-center gap-3">
               <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-              Skills & Tools
+              {dict.headingSkills}
             </h3>
             <span className="text-xs text-slate-500 tabular-nums">
-              {skills.length} total
+              {format(dict.skillsTotal, { n: skills.length })}
             </span>
           </div>
 
@@ -213,7 +272,7 @@ export default async function Home() {
                 >
                   <div className="flex items-baseline justify-between gap-3 mb-3">
                     <h4 className="text-xs font-semibold uppercase tracking-widest text-teal-400">
-                      {CAT_LABELS[cat] || cat}
+                      {categoryLabel(lang, cat)}
                     </h4>
                     <span className="text-xs text-slate-600 tabular-nums">
                       {items.length}
@@ -239,7 +298,7 @@ export default async function Home() {
         <section id="experience" className="mb-16 scroll-mt-20">
           <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3">
             <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-            Experience
+            {dict.headingExperience}
           </h3>
           <div className="space-y-0">
             <div className="relative pl-8 border-l border-slate-700">
@@ -285,15 +344,16 @@ export default async function Home() {
 
         {/* Projects — card ringkas: screenshot, nama, client, satu kalimat
             deskripsi, stack utama, plus tombol Live/Repo. Detail lengkap ada di
-            /projects/[slug]. Seluruh bagian atas card menuju halaman detail. */}
+            /[lang]/projects/[slug]. Seluruh bagian atas card menuju halaman
+            detail. */}
         <section id="projects" className="mb-16 scroll-mt-20">
           <div className="mb-6 flex items-baseline justify-between gap-4">
             <h3 className="text-xl font-bold text-white flex items-center gap-3">
               <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-              Projects
+              {dict.headingProjects}
             </h3>
             <span className="text-xs text-slate-500 tabular-nums">
-              {projects.length} shipped
+              {format(dict.projectsShipped, { n: projects.length })}
             </span>
           </div>
 
@@ -302,7 +362,10 @@ export default async function Home() {
               // Card cuma menampilkan 3 teknologi pertama; sisanya jadi "+N".
               const shown = proj.skills.slice(0, 3);
               const rest = proj.skills.length - shown.length;
-              const href = `/projects/${projectSlug(proj.name)}`;
+              // Slug sudah dihitung dari nama INGGRIS di resolveProfileData dan
+              // tidak ikut diterjemahkan, jadi URL project sama di kedua bahasa.
+              // Lihat withProjectSlugs di pure.mjs untuk alasannya.
+              const href = `/${lang}/projects/${proj.slug}`;
               const teaser = descToArray(proj.description)[0];
               // Ada baris tombol atau tidak menentukan padding bawah: tanpa
               // tombol, blok teks yang harus menutup kartu.
@@ -310,7 +373,7 @@ export default async function Home() {
 
               return (
                 <article
-                  key={proj.name}
+                  key={proj.slug}
                   className={`reveal reveal-d${(idx % 3) + 1} proj-card group flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden`}
                 >
                   {/* Bagian yang bisa diklik menuju halaman detail. Tombol
@@ -322,7 +385,7 @@ export default async function Home() {
                     <div className="bg-slate-950 border-b border-slate-800 overflow-hidden">
                       <Image
                         src={proj.image}
-                        alt={`${proj.name} interface`}
+                        alt={format(dict.projectImageAlt, { name: proj.name })}
                         width={640}
                         height={360}
                         unoptimized
@@ -382,13 +445,13 @@ export default async function Home() {
                           href={proj.live_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label={`Buka demo ${proj.name}`}
+                          aria-label={format(dict.ariaOpenDemo, { name: proj.name })}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 active:translate-y-px text-white text-sm font-medium transition-colors"
                         >
                           <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M9 5.25H6.75A1.5 1.5 0 005.25 6.75v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V15" />
                           </svg>
-                          Live demo
+                          {dict.liveDemo}
                         </a>
                       )}
                       {proj.github_url && (
@@ -396,13 +459,13 @@ export default async function Home() {
                           href={proj.github_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          aria-label={`Buka kode ${proj.name} di GitHub`}
+                          aria-label={format(dict.ariaOpenCode, { name: proj.name })}
                           className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:translate-y-px text-slate-200 text-sm font-medium border border-slate-700 hover:border-slate-600 transition-colors"
                         >
                           <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                             <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1.1 1.5 1.1.9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.4 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.2-2.6 5.1-5.1 5.4.4.4.7 1 .7 2v2.9c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.65 18.35.5 12 .5z" />
                           </svg>
-                          Repo
+                          {dict.repo}
                         </a>
                       )}
                     </div>
@@ -422,10 +485,10 @@ export default async function Home() {
             <div className="mb-6 flex items-baseline justify-between gap-4">
               <h3 className="text-xl font-bold text-white flex items-center gap-3">
                 <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
-                Certifications
+                {dict.headingCerts}
               </h3>
               <span className="text-xs text-slate-500 tabular-nums">
-                {certs.length} total
+                {format(dict.certsTotal, { n: certs.length })}
               </span>
             </div>
 
@@ -454,13 +517,13 @@ export default async function Home() {
                       href={cert.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label={`Verifikasi ${cert.name}`}
+                      aria-label={format(dict.ariaVerify, { name: cert.name })}
                       className="mt-4 self-start inline-flex items-center gap-1.5 text-sm text-teal-400 hover:text-teal-300 transition-colors"
                     >
                       <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.746 3.746 0 0121 12z" />
                       </svg>
-                      Verify credential
+                      {dict.verifyCredential}
                     </a>
                   )}
                 </div>
@@ -471,7 +534,7 @@ export default async function Home() {
 
         {/* Footer */}
         <footer className="text-center text-xs text-slate-600 pt-8 pb-4 border-t border-slate-800">
-          © {new Date().getFullYear()} {profile.name}. Built with Next.js & Tailwind CSS.
+          {format(dict.footer, { year: new Date().getFullYear(), name: profile.name })}
         </footer>
       </main>
     </div>

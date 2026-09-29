@@ -32,7 +32,7 @@ import pg from "pg";
 // scripts/deploy-remote.sh setiap deploy). Karena itu pure.mjs ikut disalin ke
 // image — lihat dockerfile stage runner. Tanpa itu, migrasi gagal dengan
 // ERR_MODULE_NOT_FOUND, dan kegagalan itu tidak tertangkap smoke test.
-import { projectSlug } from "../src/lib/pure.mjs";
+import { projectSlug, descToArray } from "../src/lib/pure.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -147,13 +147,15 @@ async function main() {
         }
 
         const { rows } = await client.query(
-          `INSERT INTO projects (slug, name, client, image_id, github_url, live_url, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+          `INSERT INTO projects (slug, name, name_id, client, client_id, image_id, github_url, live_url, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id`,
           [
             projectSlug(p.name),
             p.name,
+            p.name_id ?? "",
             p.client ?? "",
+            p.client_id ?? "",
             imageId,
             p.github_url ?? "",
             p.live_url ?? "",
@@ -162,12 +164,21 @@ async function main() {
         );
         const projectId = rows[0].id;
 
-        const descs = Array.isArray(p.description) ? p.description : [p.description ?? ""];
-        let dOrder = 0;
-        for (const body of descs.filter(Boolean)) {
+        // Kedua bahasa disejajarkan ke jumlah baris yang sama, persis seperti di
+        // saveProfileData: tabel ini menyimpan satu paragraf per baris dengan
+        // kunci (project_id, sort_order), jadi bahasa dengan paragraf lebih
+        // banyak daripada yang lain akan terpotong kalau tidak disejajarkan.
+        const descEn = descToArray(p.description ?? "")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const descId = descToArray(p.description_id ?? "")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        for (let d = 0; d < Math.max(descEn.length, descId.length); d++) {
           await client.query(
-            `INSERT INTO project_descriptions (project_id, sort_order, body) VALUES ($1, $2, $3)`,
-            [projectId, dOrder++, body]
+            `INSERT INTO project_descriptions (project_id, sort_order, body, body_id) VALUES ($1, $2, $3, $4)`,
+            [projectId, d, descEn[d] ?? "", descId[d] ?? ""]
           );
         }
 
@@ -183,6 +194,10 @@ async function main() {
       // ── Sisa data sebagai satu dokumen JSONB ─────────────────────────────
       // Path gambar di dalam dokumen ikut ditulis ulang ke URL baru, supaya
       // tidak ada lagi rujukan ke /image/... yang tidak disajikan aplikasi.
+      //
+      // Kunci `*_id` (terjemahan Indonesia) disalin apa adanya: dokumen disimpan
+      // dalam bentuk yang sama seperti yang dibaca getProfileDataRaw, jadi
+      // resolveProfileData bisa memilih bahasa tanpa perlakuan khusus di sini.
       const doc = {
         profile: {
           ...data.profile,

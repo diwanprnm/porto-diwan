@@ -34,12 +34,45 @@ CREATE TABLE IF NOT EXISTS projects (
   sort_order INT NOT NULL DEFAULT 0
 );
 
+-- ── Terjemahan (Bahasa Indonesia) ─────────────────────────────────────────
+-- Bahasa Indonesia disimpan sebagai kolom KEMBARAN di sebelah nilai Inggris,
+-- bukan sebagai baris atau tabel terpisah. Alasannya:
+--
+--   1. `slug` UNIQUE. Kalau dua bahasa jadi dua baris, satu slug tidak bisa
+--      dipakai dua kali — padahal URL /projects/<slug> memang harus sama di
+--      kedua bahasa supaya link antar bahasa tidak mati.
+--   2. Kolom yang netral bahasa (image_id, github_url, live_url, sort_order)
+--      tidak jadi punya dua salinan yang bisa menyimpang.
+--   3. Aditif. Nilai yang sudah ada tetap jadi versi Inggris, jadi tidak ada
+--      migrasi data: database lama langsung valid, dan kolom `_id` yang kosong
+--      berarti "belum diterjemahkan" — pembaca jatuh ke nilai Inggris.
+--
+-- DEFAULT '' penting: baris yang sudah ada terisi string kosong, yang oleh
+-- pickLocalized dianggap belum diterjemahkan. Kalau NULL, setiap pembaca harus
+-- menangani dua bentuk "kosong" sekaligus.
+--
+-- ALTER TABLE ... IF NOT EXISTS supaya file ini tetap aman dijalankan berkali-
+-- kali seperti CREATE di atas (docker-entrypoint-initdb.d dan `npm run
+-- db:migrate` sama-sama menjalankannya).
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS name_id   TEXT NOT NULL DEFAULT '';
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS client_id TEXT NOT NULL DEFAULT '';
+
 CREATE TABLE IF NOT EXISTS project_descriptions (
   project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   sort_order INT NOT NULL,
   body       TEXT NOT NULL,
   PRIMARY KEY (project_id, sort_order)
 );
+
+-- body_id menyimpan paragraf versi Indonesia untuk baris yang sama.
+--
+-- Konsekuensi bentuk ini, dan cara menanganinya: dua bahasa dengan jumlah
+-- paragraf berbeda berbagi baris yang sama, jadi sisi yang lebih pendek diisi
+-- string kosong. saveProfileData menyejajarkan keduanya ke
+-- max(panjang_en, panjang_id), dan trimTrailingEmpty di getProfileDataRaw
+-- membuang ekor kosong itu saat dibaca — sehingga paragraf bahasa Indonesia
+-- yang lebih banyak daripada Inggris tidak terpotong saat disimpan.
+ALTER TABLE project_descriptions ADD COLUMN IF NOT EXISTS body_id TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS project_skills (
   project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

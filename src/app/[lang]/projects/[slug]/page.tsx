@@ -1,38 +1,59 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import {
+  DEFAULT_LOCALE,
+  DICT,
+  format,
+  isLocale,
+} from "@/lib/i18n";
 import {
   getProfileData,
   descToArray,
-  projectSlug,
   findProjectBySlug,
 } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
+type Params = Promise<{ lang: string; slug: string }>;
+
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const { projects } = await getProfileData();
-  const proj = findProjectBySlug(projects, slug);
-  if (!proj) return { title: "Project tidak ditemukan" };
+  params: Params;
+}): Promise<Metadata> {
+  const { lang: raw, slug } = await params;
+  const lang = isLocale(raw) ? raw : DEFAULT_LOCALE;
+  const dict = DICT[lang];
 
+  const { projects, profile } = await getProfileData(lang);
+  const proj = findProjectBySlug(projects, slug);
+  if (!proj) return { title: dict.projectNotFound };
+
+  // Slug is identical across languages (it comes from the canonical English
+  // name), so the two translations of this page share it and differ only in
+  // the prefix — which is exactly what hreflang needs to be told.
   return {
-    title: `${proj.name} — Diwan Purnama`,
+    title: `${proj.name} — ${profile.name}`,
     description: descToArray(proj.description)[0],
+    alternates: {
+      canonical: `/${lang}/projects/${slug}`,
+      languages: {
+        en: `/en/projects/${slug}`,
+        id: `/id/projects/${slug}`,
+      },
+    },
   };
 }
 
-export default async function ProjectDetail({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const data = await getProfileData();
+export default async function ProjectDetail({ params }: { params: Params }) {
+  const { lang: raw, slug } = await params;
+  if (!isLocale(raw)) notFound();
+  const lang = raw;
+  const dict = DICT[lang];
+
+  const data = await getProfileData(lang);
   const { projects, profile } = data;
   const proj = findProjectBySlug(projects, slug);
 
@@ -40,14 +61,19 @@ export default async function ProjectDetail({
 
   // Project lain, untuk navigasi bawah. Dibuat sebagai tautan <Link> supaya
   // bisa diklik langsung, bukan cuma teks.
-  const others = projects.filter((p) => projectSlug(p.name) !== slug);
+  //
+  // Perbandingannya lewat `p.slug`, bukan projectSlug(p.name): `name` di sini
+  // sudah diterjemahkan, jadi menghitung slug dari namanya akan menghasilkan
+  // slug bahasa Indonesia dan project yang sedang dibuka ikut muncul lagi di
+  // daftar "project lain".
+  const others = projects.filter((p) => p.slug !== slug);
   const description = descToArray(proj.description);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
       <div className="mx-auto max-w-3xl px-6 py-12 md:py-16">
         <Link
-          href="/#projects"
+          href={`/${lang}#projects`}
           className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-teal-300 transition-colors"
         >
           <svg
@@ -64,7 +90,7 @@ export default async function ProjectDetail({
               d="M15.75 19.5L8.25 12l7.5-7.5"
             />
           </svg>
-          Semua project
+          {dict.backToProjects}
         </Link>
 
         <header className="mt-8">
@@ -82,7 +108,7 @@ export default async function ProjectDetail({
           <div className="relative aspect-video">
             <Image
               src={proj.image}
-              alt={`${proj.name} interface`}
+              alt={format(dict.projectImageAlt, { name: proj.name })}
               fill
               unoptimized
               className="object-contain"
@@ -116,7 +142,7 @@ export default async function ProjectDetail({
                     d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M9 5.25H6.75A1.5 1.5 0 005.25 6.75v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V15"
                   />
                 </svg>
-                Live demo
+                {dict.liveDemo}
               </a>
             )}
             {proj.github_url && (
@@ -134,7 +160,7 @@ export default async function ProjectDetail({
                 >
                   <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1.1 1.5 1.1.9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.4 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.2-2.6 5.1-5.1 5.4.4.4.7 1 .7 2v2.9c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.65 18.35.5 12 .5z" />
                 </svg>
-                Repo
+                {dict.repo}
               </a>
             )}
           </div>
@@ -143,7 +169,7 @@ export default async function ProjectDetail({
         {/* Deskripsi lengkap */}
         <section className="mt-10">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">
-            Tentang project
+            {dict.aboutProject}
           </h2>
           <div className="space-y-4">
             {description.map((d, i) => (
@@ -157,7 +183,7 @@ export default async function ProjectDetail({
         {/* Stack */}
         <section className="mt-10">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">
-            Tech stack
+            {dict.techStack}
           </h2>
           <div className="flex flex-wrap gap-2">
             {proj.skills.map((skill) => (
@@ -175,13 +201,13 @@ export default async function ProjectDetail({
         {others.length > 0 && (
           <section className="mt-16 pt-8 border-t border-slate-800">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">
-              Project lain
+              {dict.otherProjects}
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               {others.map((o) => (
                 <Link
-                  key={o.name}
-                  href={`/projects/${projectSlug(o.name)}`}
+                  key={o.slug}
+                  href={`/${lang}/projects/${o.slug}`}
                   className="group flex items-center gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 hover:border-teal-500/40 transition-colors"
                 >
                   <div className="relative h-12 w-20 shrink-0 rounded-md overflow-hidden bg-slate-950 border border-slate-800">
@@ -209,7 +235,7 @@ export default async function ProjectDetail({
         )}
 
         <footer className="mt-16 pt-8 border-t border-slate-800 text-xs text-slate-600">
-          © {new Date().getFullYear()} {profile.name}
+          {format(dict.footer, { year: new Date().getFullYear(), name: profile.name })}
         </footer>
       </div>
     </div>
