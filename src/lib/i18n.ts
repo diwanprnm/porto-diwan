@@ -36,8 +36,25 @@ export type Locale = "en" | "id";
 export const LOCALES: readonly Locale[] = ["en", "id"];
 
 /**
- * Where a bare `/` sends the visitor. English, so an international visitor
- * lands on something readable without choosing.
+ * The locale that applies when nothing else decides.
+ *
+ * Note what this is NOT: it is not "the language the site shows". Which language
+ * a bare `/` sends the visitor to is a stored preference, editable at `/admin`,
+ * and read per request by `getDefaultLocale` in `src/lib/settings.ts`. That
+ * value wins wherever it can be read.
+ *
+ * This constant is the floor under that, and it is used in two places:
+ *
+ *   1. `src/middleware.ts`, when the stored preference cannot be read — no
+ *      database configured, database down, or a path with no locale to look up
+ *      (see the note there). Middleware runs on the Edge runtime, so it cannot
+ *      query Postgres itself.
+ *   2. Server-rendered fallbacks that need an answer without a request:
+ *      `getProfileData`'s default argument, and the `isLocale(raw) ? raw :
+ *      DEFAULT_LOCALE` guards on the `[lang]` pages and the root layout.
+ *
+ * English, because the seed content is English and an unconfigured database
+ * should still serve something readable.
  */
 export const DEFAULT_LOCALE: Locale = "en";
 
@@ -113,7 +130,6 @@ const en = {
   metaDescription:
     "Portfolio & CV of Diwan Purnama, a Fullstack Developer specializing in Next.js, Laravel, and .NET.",
   projectNotFound: "Project not found",
-  languageSwitchAria: "Language",
 
   footer: "© {year} {name}. Built with Next.js & Tailwind CSS.",
   projectImageAlt: "{name} interface",
@@ -168,7 +184,6 @@ const id: Dict = {
   metaDescription:
     "Portofolio & CV Diwan Purnama, Fullstack Developer yang berfokus pada Next.js, Laravel, dan .NET.",
   projectNotFound: "Proyek tidak ditemukan",
-  languageSwitchAria: "Bahasa",
 
   footer: "© {year} {name}. Dibuat dengan Next.js & Tailwind CSS.",
   projectImageAlt: "Antarmuka {name}",

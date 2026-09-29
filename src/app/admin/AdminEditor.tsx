@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from "react";
 // `import type` penting di sini: lib/data membaca file lewat "fs", yang tidak boleh
 // ikut ke bundle client. Import tipe dihapus saat build, jadi aman.
 import type { ProfileDataStored, Skill } from "@/lib/data";
-import type { Locale } from "@/lib/i18n";
+import { isLocale, type Locale } from "@/lib/i18n";
 // descToArray diimpor dari pure.mjs, bukan disalin seperti sebelumnya.
 //
 // Komentar lama di sini menyebut alasan menyalin: lib/data.ts memakai "fs",
@@ -208,12 +208,65 @@ export default function AdminEditor() {
   // (satu per URL), jadi editor harus bisa mengisi keduanya.
   const [lang, setLang] = useState<Locale>("en");
 
+  // Bahasa tampilan situs: ke mana alamat utama "/" mengarah. Berbeda dari
+  // `lang` di atas, yang hanya memilih kolom yang sedang diisi. Nilai ini
+  // tersimpan di tabel `settings` dan dibaca middleware tiap request, jadi
+  // menyimpannya langsung mengubah situs — tanpa Save dan tanpa deploy.
+  //
+  // `null` = belum diketahui. Dipakai untuk menahan tombolnya supaya tidak
+  // bisa ditekan sebelum nilai yang berlaku benar-benar terbaca; menekan
+  // tombol yang belum tahu keadaan sekarang akan menulis nilai yang salah.
+  const [defaultLocale, setDefaultLocale] = useState<Locale | null>(null);
+  const [savingLocale, setSavingLocale] = useState(false);
+  const [localeMsg, setLocaleMsg] = useState<string | null>(null);
+
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
       .then((d) => { setData(d); setLoading(false); })
       .catch(() => { setMsg({ type: "err", text: "Gagal memuat data" }); setLoading(false); });
+
+    fetch("/api/settings/default-locale")
+      .then((r) => r.json())
+      .then((d) => { if (isLocale(d.locale)) setDefaultLocale(d.locale); })
+      // Gagal membaca bukan alasan menutup editor. Panelnya menampilkan
+      // "memuat…" dan tombolnya tetap nonaktif — lebih jujur daripada
+      // menampilkan pilihan yang belum tentu sesuai isi database.
+      .catch(() => {});
   }, []);
+
+  /**
+   * Simpan bahasa default situs.
+   *
+   * Dipisah dari `save()` dan TIDAK ikut dalam tombol Save: ini bukan isi CV,
+   * dan menyimpan preferensi situs bersama konten akan mengikat dua hal yang
+   * tidak berhubungan — menekan Save karena mengubah satu paragraf tidak boleh
+   * ikut memindahkan bahasa halaman depan.
+   */
+  async function setSiteLocale(locale: Locale) {
+    setSavingLocale(true);
+    setLocaleMsg(null);
+    try {
+      const res = await fetch("/api/settings/default-locale", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locale }),
+      });
+      if (res.ok) {
+        setDefaultLocale(locale);
+        // Perubahan berlaku paling lambat satu siklus cache (10 detik), dan
+        // itu memang perlu disebut: tanpa keterangan ini, operator yang membuka
+        // "/" lalu melihat bahasa lama akan mengira tombolnya tidak bekerja.
+        setLocaleMsg(`✓ Bahasa default: ${locale === "id" ? "Indonesia" : "English"}. Berlaku dalam ~10 detik.`);
+      } else {
+        const r = await res.json();
+        setLocaleMsg(r.error || "Gagal menyimpan bahasa default");
+      }
+    } catch {
+      setLocaleMsg("Network error");
+    }
+    setSavingLocale(false);
+  }
 
   async function save() {
     if (!data) return;
@@ -529,7 +582,10 @@ export default function AdminEditor() {
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-teal-100">✏️ Admin Editor — CV</h1>
           <div className="flex gap-2">
-            <a href={`/${lang}`} target="_blank" className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg">View Site →</a>
+            {/* Mengikuti bahasa tampilan situs, bukan tab isi yang sedang
+                aktif: yang mau dilihat operator adalah halaman depan
+                sebagaimana pengunjung melihatnya. */}
+            <a href={`/${defaultLocale ?? lang}`} target="_blank" className="px-3 py-1.5 text-sm bg-slate-800 hover:bg-slate-700 rounded-lg">View Site →</a>
             <button onClick={logout} className="px-3 py-1.5 text-sm bg-red-900 hover:bg-red-800 rounded-lg">Logout</button>
           </div>
         </div>
@@ -545,6 +601,48 @@ export default function AdminEditor() {
           </button>
           {msg && <span className={`text-sm ${msg.type === "ok" ? "text-teal-300" : "text-red-300"}`}>{msg.text}</span>}
           <span className="ml-auto text-xs text-gray-500">v{data.__meta?.version || "?"} · {data.__meta?.updated_at ? new Date(data.__meta.updated_at).toLocaleString() : ""}</span>
+        </div>
+
+        {/* Bahasa tampilan situs.
+            Berbeda dari picker di bawahnya, yang memilih kolom isi yang sedang
+            diisi. Yang ini menentukan ke mana alamat utama "/" mengarah, dan
+            hanya ada SATU nilainya untuk seluruh situs — jadi tidak ada tombol
+            "Save": menekan pilihannya langsung menyimpan. */}
+        <div className="mb-4 rounded-xl border border-teal-800/60 bg-teal-950/30 p-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-xs font-medium text-teal-200">Bahasa tampilan situs:</span>
+            <div className="flex gap-1">
+              {(["en", "id"] as const).map((l) => (
+                <button
+                  key={l}
+                  onClick={() => setSiteLocale(l)}
+                  disabled={savingLocale || defaultLocale === null}
+                  aria-pressed={defaultLocale === l}
+                  className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider rounded-md transition-colors disabled:opacity-40 ${
+                    defaultLocale === l
+                      ? "bg-teal-600/30 text-teal-100 ring-1 ring-inset ring-teal-400/60"
+                      : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  }`}
+                >
+                  {l === "en" ? "English" : "Indonesia"}
+                </button>
+              ))}
+            </div>
+            {defaultLocale === null && (
+              <span className="text-xs text-gray-500">memuat…</span>
+            )}
+            {localeMsg && (
+              <span className={`text-xs ${localeMsg.startsWith("✓") ? "text-teal-300" : "text-red-300"}`}>
+                {localeMsg}
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-[11px] text-gray-500">
+            Pengunjung yang membuka <code className="text-teal-300">/</code> diarahkan ke
+            {" "}<code className="text-teal-300">/{defaultLocale ?? "…"}</code>. Kedua versi
+            tetap bisa dibuka langsung lewat <code className="text-teal-300">/en</code> dan
+            {" "}<code className="text-teal-300">/id</code>.
+          </p>
         </div>
 
         {/* Language picker.

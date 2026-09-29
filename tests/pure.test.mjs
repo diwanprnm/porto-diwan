@@ -33,7 +33,7 @@ import {
   pickLocalizedText,
   trimTrailingEmpty,
   looksLikeFile,
-  swapLocalePath,
+  localePrefix,
 } from "../src/lib/pure.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -463,29 +463,44 @@ describe("looksLikeFile", () => {
   });
 });
 
-describe("swapLocalePath", () => {
+describe("localePrefix", () => {
   const LOCALES = ["en", "id"];
 
-  test("menukar prefiks dan mempertahankan sisa path", () => {
-    // Inti fiturnya: dari halaman detail project, pindah bahasa harus tetap di
-    // halaman itu, bukan dilempar ke beranda.
-    assert.equal(swapLocalePath("/en/projects/diarvis", "id", LOCALES), "/id/projects/diarvis");
-    assert.equal(swapLocalePath("/id/projects/diarvis", "en", LOCALES), "/en/projects/diarvis");
+  test("mengenali prefiks locale di depan path", () => {
+    assert.equal(localePrefix("/en", LOCALES), "en");
+    assert.equal(localePrefix("/id", LOCALES), "id");
+    assert.equal(localePrefix("/en/projects/diarvis", LOCALES), "en");
+    assert.equal(localePrefix("/id/projects/diarvis", LOCALES), "id");
   });
 
-  test("path tanpa segmen sesudahnya tidak dapat garis miring di ujung", () => {
-    assert.equal(swapLocalePath("/en", "id", LOCALES), "/id");
-    assert.equal(swapLocalePath("/id", "en", LOCALES), "/en");
+  test("path tanpa locale tidak punya prefiks", () => {
+    // Inilah yang membuat "/" dan "/projects/diarvis" di-redirect.
+    assert.equal(localePrefix("/", LOCALES), undefined);
+    assert.equal(localePrefix("/projects/diarvis", LOCALES), undefined);
+    assert.equal(localePrefix("/admin", LOCALES), undefined);
   });
 
-  test("path tanpa prefiks locale ditambahi, bukan dipotong", () => {
-    // Kalau salah di sini, segmen pertama path hilang tanpa error apa pun.
-    assert.equal(swapLocalePath("/projects/diarvis", "id", LOCALES), "/id/projects/diarvis");
-    assert.equal(swapLocalePath("/", "id", LOCALES), "/id");
+  test("halaman yang kebetulan diawali kode bahasa TIDAK dianggap berbahasa", () => {
+    // Titik batas paling penting di sini. "/english-notes" harus dibaca sebagai
+    // satu segmen "english-notes", bukan "en" + "/glish-notes". Kalau salah,
+    // halaman itu dianggap sudah berbahasa, tidak di-redirect ke locale, lalu
+    // 404 — dan penyebabnya tidak terlihat sama sekali dari URL-nya.
+    assert.equal(localePrefix("/english-notes", LOCALES), undefined);
+    assert.equal(localePrefix("/identity", LOCALES), undefined);
+    assert.equal(localePrefix("/enx", LOCALES), undefined);
   });
 
-  test("segmen yang kebetulan sama dengan kode bahasa tidak salah dikenali", () => {
-    // "/projects/en" — "en" di sini adalah slug, bukan prefiks locale.
-    assert.equal(swapLocalePath("/id/projects/en", "en", LOCALES), "/en/projects/en");
+  test("segmen yang sama di TENGAH path bukan prefiks", () => {
+    // "en" di sini slug project, bukan kode bahasa. Hanya segmen PERTAMA yang
+    // menentukan.
+    assert.equal(localePrefix("/projects/en", LOCALES), undefined);
+    assert.equal(localePrefix("/id/projects/en", LOCALES), "id");
+  });
+
+  test("daftar locale yang berbeda dihormati", () => {
+    // Fungsinya tidak boleh menganggap "en" selalu ada; yang berlaku adalah
+    // daftar yang diteruskan.
+    assert.equal(localePrefix("/en", ["id"]), undefined);
+    assert.equal(localePrefix("/fr", ["en", "fr"]), "fr");
   });
 });
