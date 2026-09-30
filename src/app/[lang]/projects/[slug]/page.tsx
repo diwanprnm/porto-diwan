@@ -70,7 +70,11 @@ export default async function ProjectDetail({ params }: { params: Params }) {
   // Teks lengkap, bukan ringkasan kartu: resolveProfileData sudah menjatuhkan
   // ke `description` kalau long_description belum diisi, jadi di sini selalu
   // ada isinya untuk project yang punya deskripsi. Lihat splitProjectTexts.
-  const description = descToArray(proj.long_description);
+  // `?? []`: long_description bertipe opsional, dan TS menolak meneruskan
+  // undefined ke descToArray. Di runtime nilainya selalu array (splitProjectTexts
+  // mengembalikan string[]), jadi cabang ini hanya menenangkan tipe — dan kalau
+  // sungguh kosong, map di bawah menghasilkan nol paragraf, bukan paragraf kosong.
+  const description = descToArray(proj.long_description ?? []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">

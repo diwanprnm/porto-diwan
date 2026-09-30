@@ -64,9 +64,12 @@ export default function ImageField({
       <div className="flex items-start gap-3">
         <div className="shrink-0 w-20 h-20 rounded-lg border border-slate-700 bg-slate-900 overflow-hidden flex items-center justify-center">
           {value ? (
-            // eslint-disable-next-line @next/next/no-img-element -- gambar dari
-            // /api/images bersifat dinamis dan sudah immutable, jadi optimizer
-            // Next tidak memberi manfaat di sini.
+            // Gambar dari /api/images bersifat dinamis dan sudah immutable, jadi
+            // optimizer Next tidak memberi manfaat di sini. Direktif disable-nya
+            // harus persis di baris tepat sebelum <img>: `disable-next-line`
+            // hanya mematikan baris berikutnya, jadi penjelasan di atasnya
+            // memutus sasarannya (dan direktifnya jadi "unused").
+            // eslint-disable-next-line @next/next/no-img-element
             <img src={value} alt="" className="w-full h-full object-cover" />
           ) : (
             <span className="text-[10px] text-slate-600 text-center px-1">
