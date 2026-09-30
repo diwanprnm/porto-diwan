@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 // Tipe diambil dari sumbernya, bukan disalin ulang. Sebelumnya file ini punya
 // salinan tipe sendiri, dan salinan itu sudah menyimpang dari content/profile.json:
 // `contact` ditaruh di dalam `profile` (padahal ada di root) dan `skills` dianggap
@@ -10,192 +10,16 @@ import { useState, useEffect, useRef } from "react";
 // ikut ke bundle client. Import tipe dihapus saat build, jadi aman.
 import type { ProfileDataStored, Skill } from "@/lib/data";
 import { isLocale, type Locale } from "@/lib/i18n";
-// descToArray diimpor dari pure.mjs, bukan disalin seperti sebelumnya.
-//
-// Komentar lama di sini menyebut alasan menyalin: lib/data.ts memakai "fs",
-// dan value import dari file itu akan menarik "fs" ke bundle browser. Alasan itu
-// benar untuk data.ts — tapi tidak berlaku untuk pure.mjs, yang tidak
-// mengimpor apa pun. Jadi sekarang salinannya tidak perlu ada, dan fungsinya
-// ikut terjaga oleh tests/pure.test.mjs.
-import { descToArray } from "@/lib/pure.mjs";
-
-/**
- * Membersihkan array yang diedit sebagai teks: buang spasi ujung dan elemen
- * kosong.
- *
- * KAPAN dipanggil itu intinya, bukan apa yang dikerjakan. Fungsi ini hanya boleh
- * jalan saat mengetik SUDAH SELESAI (onBlur) — jangan pernah di onChange.
- *
- * Alasannya: pada onChange, karakter terakhir dari nilai selalu karakter yang
- * baru saja ditekan. Pembersihan pada saat itu menghapus karakter tersebut, jadi
- * ketikan berikutnya menempel ke teks sebelumnya. Itu penyebab satu keluarga bug
- * di empat kolom sekaligus:
- *
- *   - "Hello "  → spasi ujung di-trim   → "Hello"  → huruf berikutnya menempel
- *   - "React,"  → elemen kosong dibuang → "React"  → koma hilang, tidak bisa
- *                 mengetik item kedua
- *   - Enter     → baris kosong dibuang  → paragraf baru tidak pernah bisa dibuat
- *
- * Karena itu onChange hanya boleh `split(sep)`, dan render harus `join(sep)`
- * dengan pemisah yang sama persis, sehingga nilainya bolak-balik utuh dan apa
- * yang diketik itulah isi state. Pembersihannya menyusul di sini.
- *
- * Kalau hasil bersihnya kosong, disisakan satu elemen kosong: array kosong
- * membuat kotak teks tampak mengosongkan dirinya sendiri tanpa alasan yang
- * terlihat.
- */
-function cleanTextArray(parts: string[]): string[] {
-  const cleaned = parts.map((s) => s.trim()).filter(Boolean);
-  return cleaned.length > 0 ? cleaned : [""];
-}
-
-/**
- * Pemisah antar paragraf di kolom Description, dan karena itu juga pemisah antar
- * baris di textarea-nya. Dipakai untuk split saat mengetik dan join saat render,
- * jadi keduanya tidak mungkin berbeda tanpa ketahuan.
- */
-const DESC_SEP = "\n";
-
-/**
- * Baca satu field dengan kunci yang baru diketahui saat runtime.
- *
- * Kunci itu ditentukan bahasa aktif (`foo` atau `foo_id`), jadi tidak ada cara
- * menuliskannya secara statis. Helper ini mengurung satu-satunya `as` di file
- * ini, supaya pembacaan field di seluruh komponen tetap bebas cast.
- *
- * Parameternya `object` dan bukan `Record<string, unknown>` dengan sengaja:
- * `object` menerima semua bentuk data di sini, termasuk `ProjectStored` yang
- * berupa irisan dengan `Omit<…>` (mapped type). `Record<string, unknown>` tidak
- * dijamin menerima mapped type — index signature-nya tidak dibuat otomatis
- * untuk tipe hasil `Omit`, sehingga pemanggilnya bisa gagal typecheck.
- *
- * Nilai kembaliannya `unknown`, bukan `any`: pemanggil WAJIB mempersempitnya
- * (di sini selalu `as string | undefined`), jadi tidak ada `any` yang menyebar
- * diam-diam lewat helper ini.
- */
-function fields(obj: object): Record<string, unknown> {
-  return obj as unknown as Record<string, unknown>;
-}
-
-/**
- * Upload gambar.
- *
- * Menggantikan input teks path gambar yang lama ("/image/diwan2.png"), yang
- * mengharuskan file ditaruh manual di public/ lalu namanya diketik. Sekarang
- * file dikirim ke /api/upload, disimpan sebagai BLOB di database, dan nilai
- * yang disimpan di data adalah URL "/api/images/<id>".
- *
- * Nilai lama tetap ditampilkan sebagai preview: gambar yang belum di-upload
- * ulang masih memakai URL hasil migrasi, dan URL itu juga "/api/images/<id>",
- * jadi preview-nya langsung benar tanpa perlakuan khusus.
- */
-function ImageField({
-  value,
-  onChange,
-  label,
-  hint,
-}: {
-  value: string;
-  onChange: (url: string) => void;
-  label: string;
-  hint?: string;
-}) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  async function upload(file: File) {
-    setBusy(true);
-    setErr(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const body = await res.json();
-      if (!res.ok) {
-        setErr(body.error || "Upload gagal");
-      } else {
-        onChange(body.url);
-      }
-    } catch {
-      setErr("Tidak bisa menghubungi server");
-    }
-    setBusy(false);
-    // Reset input supaya memilih file yang sama dua kali berturut-turut tetap
-    // memicu onChange (tanpa ini, event-nya tidak jalan karena nilainya sama).
-    if (fileRef.current) fileRef.current.value = "";
-  }
-
-  const btn =
-    "px-3 py-1.5 text-sm rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
-
-  return (
-    <div className="mt-3">
-      <span className="block text-xs text-gray-400 mb-1">{label}</span>
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 w-20 h-20 rounded-lg border border-slate-700 bg-slate-900 overflow-hidden flex items-center justify-center">
-          {value ? (
-            // eslint-disable-next-line @next/next/no-img-element -- gambar dari
-            // /api/images bersifat dinamis dan sudah immutable, jadi optimizer
-            // Next tidak memberi manfaat di sini.
-            <img src={value} alt="" className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-[10px] text-slate-600 text-center px-1">
-              belum ada gambar
-            </span>
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap gap-2">
-            {/* Input file ditaruh DI DALAM <label> yang membungkusnya. Dua alasan:
-                (1) mengklik label otomatis membuka dialog file tanpa perlu .click()
-                dari JavaScript, dan (2) `has-[:focus-visible]` bisa menggambar ring
-                fokus pada label — kalau input-nya di luar label, ring-nya tidak
-                akan terlihat dan tombol ini tidak bisa dipakai dengan keyboard. */}
-            <label
-              className={`${btn} bg-teal-800 hover:bg-teal-700 border-teal-700 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-400 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-slate-900 ${
-                busy ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-            >
-              {busy ? "Mengunggah…" : value ? "Ganti gambar" : "Pilih gambar"}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                className="sr-only"
-                disabled={busy}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void upload(f);
-                }}
-              />
-            </label>
-            {value && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onChange("")}
-                className={`${btn} bg-slate-800 hover:bg-slate-700 border-slate-600`}
-              >
-                Hapus
-              </button>
-            )}
-          </div>
-
-          <p className="text-[11px] text-slate-500 mt-1.5">
-            PNG, JPEG, WebP, GIF, atau SVG. Maks 5 MB.
-            {hint ? ` ${hint}` : ""}
-          </p>
-          {value && (
-            <p className="text-[11px] text-slate-600 mt-0.5 break-all">{value}</p>
-          )}
-          {err && <p className="text-[11px] text-red-400 mt-1">{err}</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
+// Helper bersama dengan /admin/projects. Diekstrak ke modul sendiri supaya
+// kedua editor memakai aturan pelokalan yang persis sama — lihat catatan di
+// editor-shared.ts.
+import {
+  cleanTextArray,
+  makeLocalizers,
+} from "./editor-shared";
+// ImageField juga dipakai /admin/projects; bentuknya tidak berubah.
+import ImageField from "./ImageField";
+import Link from "next/link";
 
 export default function AdminEditor() {
   const [data, setData] = useState<ProfileDataStored | null>(null);
@@ -306,48 +130,10 @@ export default function AdminEditor() {
 
   // ── Terjemahan: kunci kolom, baca, dan placeholder ──────────────────────
   //
-  // Bahasa Indonesia disimpan sebagai kolom kembaran berakhiran `_id` di
-  // sebelah nilai Inggris (lihat ProfileDataStored di lib/data.ts). Tiga helper
-  // di bawah adalah SATU-SATUNYA tempat aturan itu ditulis di file ini.
-  //
-  // `locKey`  — kolom mana yang ditulis/dibaca untuk bahasa aktif.
-  // `loc`     — nilai untuk bahasa aktif. Kosong kalau belum diterjemahkan.
-  // `ph`      — nilai Inggris sebagai placeholder saat mengisi bahasa Indonesia.
-  //
-  // Placeholder itu penting untuk alur kerjanya, bukan hiasan: tanpa melihat
-  // teks Inggrisnya, penerjemah tidak tahu apa yang harus diterjemahkan, dan
-  // kolom kosong terlihat seperti data hilang alih-alih "belum diisi".
-  //
-  // Parameternya `object`, bukan `Record<string, unknown>`, dan itu bukan
-  // kelonggaran: kuncinya baru diketahui saat runtime (ditentukan bahasa aktif),
-  // jadi aksesnya memang dinamis. Yang penting, `object` menerima SEMUA tipe
-  // data di sini termasuk `ProjectStored` yang berbentuk irisan dengan `Omit<…>`
-  // (mapped type) — sedangkan `Record<string, unknown>` tidak dijamin menerima
-  // mapped type. Pelebaran tipe sengaja dikurung di dalam helper ini saja:
-  // pemanggil tetap menerima `string`, bukan `unknown`.
-  const locKey = (k: string) => (lang === "id" ? `${k}_id` : k);
-
-  const loc = (obj: object, k: string): string =>
-    (fields(obj)[locKey(k)] as string | undefined) ?? "";
-
-  const ph = (obj: object, k: string): string | undefined =>
-    lang === "id" ? ((fields(obj)[k] as string | undefined) ?? "") : undefined;
-
-  // Array teks untuk bahasa aktif.
-  //
-  // Lewat descToArray, bukan `Array.isArray(v) ? v : []`: `description` boleh
-  // berbentuk STRING tunggal (project "Metagama Information System" di seed).
-  // Dengan pemeriksaan Array saja, nilai string itu menghasilkan array kosong —
-  // textarea Description tampil kosong padahal isinya ada, dan mengetik satu
-  // huruf di situ menimpa seluruh deskripsi aslinya. Bentuk string adalah bentuk
-  // yang sah di sini, bukan data yang rusak.
-  const locArr = (obj: object, k: string): string[] =>
-    descToArray((fields(obj)[locKey(k)] as string | string[] | undefined) ?? "");
-
-  const phArr = (obj: object, k: string): string | undefined =>
-    lang === "id"
-      ? descToArray((fields(obj)[k] as string | string[] | undefined) ?? "").join(DESC_SEP)
-      : undefined;
+  // Aturannya tinggal di editor-shared.ts, dipakai bersama /admin/projects
+  // supaya kedua editor tidak bisa menyimpang satu sama lain. Lihat catatan di
+  // sana untuk arti tiap fungsi.
+  const { locKey, loc, ph, locArr, phArr } = makeLocalizers(lang);
 
   // ── Setters ──
   //
@@ -471,58 +257,13 @@ export default function AdminEditor() {
   const removeExp = (i: number) =>
     setData({ ...data, experience: data.experience.filter((_, idx) => idx !== i) });
 
-  // Projects
-  const updateProj = (i: number, k: string, v: string) => {
-    const proj = [...data.projects];
-    proj[i] = { ...proj[i], [locKey(k)]: v };
-    setData({ ...data, projects: proj });
-  };
-  // Gambar dan URL repo/demo netral bahasa.
-  const updateProjNeutral = (i: number, k: string, v: string) => {
-    const proj = [...data.projects];
-    proj[i] = { ...proj[i], [k]: v };
-    setData({ ...data, projects: proj });
-  };
-  // onChange hanya split(DESC_SEP); trim ada di trimProjDesc lewat onBlur. Lihat
-  // cleanTextArray untuk alasannya — intinya, membersihkan di onChange ikut
-  // menghapus karakter yang sedang diketik.
-  const updateProjDesc = (i: number, v: string) => {
-    const proj = [...data.projects];
-    proj[i] = { ...proj[i], [locKey("description")]: v.split(DESC_SEP) };
-    setData({ ...data, projects: proj });
-  };
-  const trimProjDesc = (i: number) => {
-    const proj = [...data.projects];
-    // `?? ""` bukan sekadar penjaga tipe: kolom description boleh string
-    // tunggal, array, atau belum ada sama sekali (project yang baru ditambah
-    // lewat tombol "+ Add" mulai dari array kosong). descToArray tidak menerima
-    // undefined.
-    const raw = fields(proj[i])[locKey("description")];
-    proj[i] = {
-      ...proj[i],
-      [locKey("description")]: cleanTextArray(
-        descToArray((raw as string | string[] | undefined) ?? "")
-      ),
-    };
-    setData({ ...data, projects: proj });
-  };
-  const updateProjSkills = (i: number, v: string) => {
-    const proj = [...data.projects];
-    proj[i] = { ...proj[i], skills: v.split(",") };
-    setData({ ...data, projects: proj });
-  };
-  const trimProjSkills = (i: number) => {
-    const proj = [...data.projects];
-    proj[i] = { ...proj[i], skills: cleanTextArray(proj[i].skills) };
-    setData({ ...data, projects: proj });
-  };
-  const addProj = () =>
-    setData({
-      ...data,
-      projects: [...data.projects, { name: "", client: "", image: "", github_url: "", live_url: "", description: [], skills: [] }],
-    });
-  const removeProj = (i: number) =>
-    setData({ ...data, projects: data.projects.filter((_, idx) => idx !== i) });
+  // Projects TIDAK lagi diedit di sini. Pengelolaannya pindah seluruhnya ke
+  // /admin/projects supaya tidak ada dua form yang bisa saling menimpa.
+  //
+  // `data.projects` tetap dibawa di state dan tetap ikut terkirim saat Save:
+  // saveProfileData menulis dokumen dan tabel projects sebagai satu kesatuan,
+  // jadi menghapus field itu dari body akan menghapus SELURUH project di
+  // database. Yang dihapus hanya UI-nya.
 
   const addSocial = () =>
     setData({ ...data, socials: [...data.socials, { platform: "", url: "", icon: "" }] });
@@ -808,61 +549,25 @@ export default function AdminEditor() {
           ))}
         </section>
 
-        {/* Projects */}
+        {/* Projects — hanya tautan. Form-nya pindah seluruhnya ke
+            /admin/projects supaya tidak ada dua tempat yang bisa menyimpan
+            versi berbeda dari daftar project yang sama. */}
         <section className={card + " mt-4"}>
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-base font-semibold text-teal-200">🚀 Projects</h2>
-            <button onClick={addProj} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-teal-200">🚀 Projects</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                {data.projects.length} project. Deskripsi ringkas, detail lengkap,
+                gambar, dan tech stack dikelola di halaman terpisah.
+              </p>
+            </div>
+            <Link
+              href="/admin/projects"
+              className="shrink-0 px-4 py-2 text-sm bg-teal-800 hover:bg-teal-700 rounded-lg font-medium"
+            >
+              Kelola Proyek →
+            </Link>
           </div>
-          {data.projects.map((proj, i) => {
-            // Deskripsi boleh string tunggal (Metagama) atau array (lainnya).
-            // Tanpa descToArray, project berdeskripsi string jadi undefined dan
-            // textarea-nya muncul kosong.
-            const descArr = locArr(proj, "description").join(DESC_SEP);
-            return (
-              <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
-                <div className="flex justify-between mb-2">
-                  <span className="text-xs text-gray-500 font-mono">#{i + 1}</span>
-                  <button onClick={() => removeProj(i)} className="text-xs text-red-400 hover:text-red-300">Remove</button>
-                </div>
-                <label className={label}>Name</label>
-                <input className={input} value={loc(proj, "name")} placeholder={ph(proj, "name")} onChange={(e) => updateProj(i, "name", e.target.value)} />
-                {/* Slug URL dihitung dari nama INGGRIS, jadi mengubah nama di
-                    tab ID tidak mengubah alamat halaman detail project. */}
-                <p className="text-[11px] text-gray-500 mt-1">
-                  Nama versi Inggris yang menentukan URL <code>/projects/&lt;slug&gt;</code>. Mengubahnya mengubah alamat halaman detail.
-                </p>
-                <label className={label}>Client</label>
-                <input className={input} value={loc(proj, "client")} placeholder={ph(proj, "client")} onChange={(e) => updateProj(i, "client", e.target.value)} />
-                <ImageField
-                  label="Gambar project"
-                  value={proj.image}
-                  onChange={(url) => updateProjNeutral(i, "image", url)}
-                  hint="Screenshot antarmuka. Rasio lebar lebih bagus."
-                />
-                <label className={label}>GitHub URL</label>
-                <input className={input} value={proj.github_url} onChange={(e) => updateProjNeutral(i, "github_url", e.target.value)} />
-                <label className={label}>Live URL (kosongkan kalau tidak ada demo)</label>
-                <input className={input} value={proj.live_url ?? ""} onChange={(e) => updateProjNeutral(i, "live_url", e.target.value)} />
-                <label className={label}>Description (satu paragraf per baris)</label>
-                <textarea
-                  className={input}
-                  rows={5}
-                  value={descArr}
-                  placeholder={phArr(proj, "description")}
-                  onChange={(e) => updateProjDesc(i, e.target.value)}
-                  onBlur={() => trimProjDesc(i)}
-                />
-                <label className={label}>Skills (comma-separated)</label>
-                <input
-                  className={input}
-                  value={proj.skills.join(", ")}
-                  onChange={(e) => updateProjSkills(i, e.target.value)}
-                  onBlur={() => trimProjSkills(i)}
-                />
-              </div>
-            );
-          })}
         </section>
 
         {/* Certifications */}

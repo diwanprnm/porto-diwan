@@ -339,10 +339,10 @@ export default async function Home({
           </div>
         </section>
 
-        {/* Projects — card ringkas: screenshot, nama, client, satu kalimat
-            deskripsi, stack utama, plus tombol Live/Repo. Detail lengkap ada di
-            /[lang]/projects/[slug]. Seluruh bagian atas card menuju halaman
-            detail. */}
+        {/* Projects — card ringkas: screenshot, nama, client, ringkasan
+            description, seluruh tech stack, plus tombol Live/Repo. Cerita
+            lengkapnya (long_description) ada di /[lang]/projects/[slug].
+            Seluruh bagian atas card menuju halaman detail. */}
         <section id="projects" className="mb-16 scroll-mt-20">
           <div className="mb-6 flex items-baseline justify-between gap-4">
             <h3 className="text-xl font-bold text-white flex items-center gap-3">
@@ -356,13 +356,14 @@ export default async function Home({
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {projects.map((proj, idx) => {
-              // Card cuma menampilkan 3 teknologi pertama; sisanya jadi "+N".
-              const shown = proj.skills.slice(0, 3);
-              const rest = proj.skills.length - shown.length;
               // Slug sudah dihitung dari nama INGGRIS di resolveProfileData dan
               // tidak ikut diterjemahkan, jadi URL project sama di kedua bahasa.
               // Lihat withProjectSlugs di pure.mjs untuk alasannya.
               const href = `/${lang}/projects/${proj.slug}`;
+              // Ringkasan, bukan teks panjang: resolveProfileData sudah memilih
+              // mana yang tampil di kartu (description, atau paragraf pertama
+              // long_description kalau ringkasannya belum diisi). Lihat
+              // splitProjectTexts di pure.mjs.
               const teaser = descToArray(proj.description)[0];
               // Ada baris tombol atau tidak menentukan padding bawah: tanpa
               // tombol, blok teks yang harus menutup kartu.
@@ -410,24 +411,25 @@ export default async function Home({
                       )}
 
                       {teaser && (
-                        <p className="mt-3 text-[13px] text-slate-400 leading-relaxed line-clamp-2">
+                        // Tanpa line-clamp: ringkasannya memang satu kalimat
+                        // utuh, dan memotongnya di tengah kata menyembunyikan
+                        // teks tanpa jejak apa pun.
+                        <p className="mt-3 text-[13px] text-slate-400 leading-relaxed">
                           {teaser}
                         </p>
                       )}
 
+                      {/* Seluruh tech stack, bukan 3 pertama + "+N": daftar
+                          lengkapnya justru yang menunjukkan kemampuan project,
+                          dan menyembunyikannya di balik angka tidak memberi
+                          info apa pun. */}
                       <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-teal-400">
-                        {shown.map((skill, i) => (
+                        {proj.skills.map((skill, i) => (
                           <span key={skill} className="flex items-center gap-2">
                             {i > 0 && <span className="text-slate-700">·</span>}
                             {skill}
                           </span>
                         ))}
-                        {rest > 0 && (
-                          <span className="flex items-center gap-2">
-                            <span className="text-slate-700">·</span>
-                            <span className="text-slate-500">+{rest}</span>
-                          </span>
-                        )}
                       </div>
                     </div>
                   </Link>

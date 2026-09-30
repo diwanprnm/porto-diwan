@@ -31,6 +31,7 @@ import {
   pickLocalized,
   pickLocalizedArray,
   pickLocalizedText,
+  splitProjectTexts,
   trimTrailingEmpty,
   looksLikeFile,
   localePrefix,
@@ -100,6 +101,54 @@ describe("descToArray", () => {
     // `descToArray(x)[0]` untuk teaser) akan mendapat undefined kalau di sini
     // dikembalikan [].
     assert.deepEqual(descToArray(""), [""]);
+  });
+});
+
+describe("splitProjectTexts", () => {
+  test("keduanya terisi: kartu pakai description, detail pakai long", () => {
+    assert.deepEqual(
+      splitProjectTexts(["ringkas"], ["panjang satu", "panjang dua"]),
+      { card: ["ringkas"], detail: ["panjang satu", "panjang dua"] }
+    );
+  });
+
+  test("description kosong: kartu jatuh ke paragraf PERTAMA long description", () => {
+    // Ini keadaan setiap project sebelum ringkasannya diisi lewat admin. Kalau
+    // cadangan ini tidak ada, kartu-kartu di halaman depan mendadak kosong.
+    assert.deepEqual(
+      splitProjectTexts([], ["paragraf satu", "paragraf dua"]),
+      { card: ["paragraf satu"], detail: ["paragraf satu", "paragraf dua"] }
+    );
+  });
+
+  test("long description kosong: detail jatuh ke description", () => {
+    assert.deepEqual(
+      splitProjectTexts(["ringkas satu", "ringkas dua"], []),
+      { card: ["ringkas satu", "ringkas dua"], detail: ["ringkas satu", "ringkas dua"] }
+    );
+  });
+
+  test("keduanya kosong: hasilnya array kosong, bukan string kosong", () => {
+    assert.deepEqual(splitProjectTexts([], []), { card: [], detail: [] });
+    assert.deepEqual(splitProjectTexts(undefined, undefined), { card: [], detail: [] });
+  });
+
+  test("bentuk string tunggal ditangani seperti array", () => {
+    // Project Metagama di seed memakai string, bukan array.
+    assert.deepEqual(splitProjectTexts("ringkas", "panjang"), {
+      card: ["ringkas"],
+      detail: ["panjang"],
+    });
+  });
+
+  test("elemen berisi spasi saja dianggap belum diisi", () => {
+    // Kolom teks yang dibiarkan kosong di admin menghasilkan " " atau "\n",
+    // bukan "". Kalau ini lolos, kartu menampilkan baris kosong dan paragraf
+    // pertama teks panjang tidak pernah dipakai sebagai cadangan.
+    assert.deepEqual(splitProjectTexts(["   "], ["  ", "asli"]), {
+      card: ["asli"],
+      detail: ["asli"],
+    });
   });
 });
 
@@ -313,6 +362,12 @@ describe("data seed", () => {
       if (!p.name_id) missing.push(`projects[${i}].name_id`);
       if (!p.client_id) missing.push(`projects[${i}].client_id`);
       if (!p.description_id) missing.push(`projects[${i}].description_id`);
+      // Teks panjang boleh belum ada sama sekali, tapi kalau versi Inggrisnya
+      // diisi, terjemahannya harus ikut — kalau tidak, halaman Indonesia jatuh
+      // ke teks Inggris di tengah halaman yang lain berbahasa Indonesia.
+      if (p.long_description && !p.long_description_id) {
+        missing.push(`projects[${i}].long_description_id`);
+      }
     });
 
     assert.deepEqual(missing, [], `belum diterjemahkan: ${missing.join(", ")}`);

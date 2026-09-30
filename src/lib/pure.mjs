@@ -49,6 +49,59 @@ export function descToArray(desc) {
 }
 
 /**
+ * Buang elemen yang kosong atau berisi spasi saja. Dipakai splitProjectTexts,
+ * dan sengaja lokal: aturan "kosong" di sini sama dengan pickLocalized (string
+ * kosong ATAU spasi saja = belum diisi), tapi tidak perlu diekspor karena tidak
+ * ada pemanggil lain.
+ *
+ * @param {(string | undefined | null)[]} arr
+ * @returns {string[]}
+ */
+function nonEmptyStrings(arr) {
+  return arr.filter((s) => typeof s === "string" && s.trim() !== "");
+}
+
+/**
+ * Pisahkan dua peran teks sebuah project: ringkasan untuk kartu, teks lengkap
+ * untuk halaman detail.
+ *
+ * Kebutuhan keduanya berbeda — kartu ingin satu kalimat utuh yang tidak
+ * terpotong, halaman detail ingin seluruh cerita — jadi satu field tidak bisa
+ * melayani keduanya. Tapi keduanya juga tidak boleh kosong kalau yang lain
+ * terisi: project lama hanya punya satu teks, dan halaman yang mendadak kosong
+ * lebih buruk daripada teks yang dipakai di dua tempat.
+ *
+ * Karena itu ada cadangan dua arah:
+ *
+ *   description terisi          → kartu memakai description
+ *   description kosong          → kartu memakai paragraf PERTAMA long_description
+ *   long_description terisi     → detail memakai long_description
+ *   long_description kosong     → detail memakai description
+ *
+ * Hasilnya selalu array paragraf (bentuk yang sama dengan `description` di
+ * halaman), bukan string, supaya pemanggil tidak perlu tahu bentuk aslinya.
+ *
+ * @param {string | string[] | undefined | null} description
+ * @param {string | string[] | undefined | null} longDescription
+ * @returns {{ card: string[], detail: string[] }}
+ */
+export function splitProjectTexts(description, longDescription) {
+  const card = nonEmptyStrings(descToArray(description ?? ""));
+  const detail = nonEmptyStrings(descToArray(longDescription ?? ""));
+
+  if (card.length > 0) {
+    return { card, detail: detail.length > 0 ? detail : card };
+  }
+  if (detail.length > 0) {
+    // Belum ada ringkasan: kartu memakai paragraf pertama teks panjang, dan
+    // dipotong hanya di sini — bukan dengan line-clamp di CSS, yang memotong
+    // di tengah kata tanpa jejak bahwa ada teks lanjutan.
+    return { card: [detail[0]], detail };
+  }
+  return { card: [], detail: [] };
+}
+
+/**
  * Kelompokkan skill per kategori, mempertahankan urutan aslinya di dalam tiap
  * kelompok.
  *

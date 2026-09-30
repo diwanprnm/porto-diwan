@@ -134,12 +134,14 @@
       "image": "/image/webdiarvis.png",
       "github_url": "https://github.com/diwanprnm/Diarvis/tree/diwan",
       "live_url": "",
-      "description": [
+      "description": "Regional asset management system for Bandung Regency Government — complete CRUD for master asset data, built with Laravel and PostgreSQL.",
+      "description_id": "Sistem manajemen aset regional untuk Pemerintah Kabupaten Bandung — CRUD lengkap data aset induk, dibangun dengan Laravel dan PostgreSQL.",
+      "long_description": [
         "Designed and developed a comprehensive regional asset management web application for Bandung Regency using Laravel.",
         "Built full CRUD workflows for master asset data: create, read, update, delete, and detailed views.",
         "Integrated PostgreSQL for robust relational data modeling of government asset hierarchies."
       ],
-      "description_id": [
+      "long_description_id": [
         "Merancang dan membangun aplikasi web manajemen aset regional yang menyeluruh untuk Kabupaten Bandung menggunakan Laravel.",
         "Membangun alur CRUD lengkap untuk data aset induk: tambah, lihat, ubah, hapus, dan tampilan detail.",
         "Mengintegrasikan PostgreSQL untuk pemodelan data relasional hierarki aset pemerintah yang kokoh."
@@ -154,12 +156,14 @@
       "image": "/image/tth.png",
       "github_url": "https://github.com/diwanprnm/Telkom-Test-House",
       "live_url": "",
-      "description": [
+      "description": "Web app for telecommunication device certification testing at PT Telkom, with email-based OTP verification for secure test-result access.",
+      "description_id": "Aplikasi web untuk pengujian sertifikasi perangkat telekomunikasi di PT Telkom, dengan verifikasi OTP berbasis email untuk akses hasil uji yang aman.",
+      "long_description": [
         "Built a web application supporting telecommunication device certification testing workflows at PT Telkom.",
         "Engineered an email-based OTP verification system for secure test-result access.",
         "Developed functional testing and Technical Meeting Pre-Functional Test modules."
       ],
-      "description_id": [
+      "long_description_id": [
         "Membangun aplikasi web yang mendukung alur pengujian sertifikasi perangkat telekomunikasi di PT Telkom.",
         "Merancang sistem verifikasi OTP berbasis email untuk akses hasil pengujian yang aman.",
         "Membangun modul pengujian fungsional dan Technical Meeting Pre-Functional Test."
@@ -174,12 +178,14 @@
       "image": "/image/rankweb.png",
       "github_url": "https://github.com/diwanprnm/PLN-Successor",
       "live_url": "",
-      "description": [
+      "description": "Job promotion management system for PT PLN's internal HR processes, with a normalized PostgreSQL schema for promotion tracking and approvals.",
+      "description_id": "Sistem manajemen kenaikan jabatan untuk proses SDM internal PT PLN, dengan skema PostgreSQL ternormalisasi untuk pelacakan promosi dan persetujuan.",
+      "long_description": [
         "Developed a job promotion management system for PT PLN's internal HR processes using Laravel.",
         "Designed normalized PostgreSQL database schema for promotion tracking and approval workflows.",
         "Documented REST API specifications enabling smooth handoff between frontend and backend teams."
       ],
-      "description_id": [
+      "long_description_id": [
         "Membangun sistem manajemen kenaikan jabatan untuk proses SDM internal PT PLN menggunakan Laravel.",
         "Merancang skema basis data PostgreSQL yang ternormalisasi untuk pelacakan promosi dan alur persetujuan.",
         "Mendokumentasikan spesifikasi REST API sehingga serah terima antara tim frontend dan backend berjalan lancar."
@@ -194,8 +200,10 @@
       "image": "/image/metagama.jpeg",
       "github_url": "",
       "live_url": "",
-      "description": "A web-based administrative system for Metagama's religious mentoring program at POLBAN. Built to digitize participant and group data management — replacing paper-based records with structured CRUD operations. Manages participant registration, group assignments, attendance tracking, and reporting for hundreds of students across multiple mentoring cycles.",
-      "description_id": "Sistem administrasi berbasis web untuk program mentoring keagamaan Metagama di POLBAN. Dibangun untuk mendigitalkan pengelolaan data peserta dan kelompok — menggantikan pencatatan berbasis kertas dengan operasi CRUD yang terstruktur. Mengelola pendaftaran peserta, pembagian kelompok, pelacakan kehadiran, dan pelaporan untuk ratusan mahasiswa di beberapa siklus mentoring.",
+      "description": "Web-based administrative system for Metagama's religious mentoring program at POLBAN — digitizing participant and group data management.",
+      "description_id": "Sistem administrasi berbasis web untuk program mentoring keagamaan Metagama di POLBAN — mendigitalkan pengelolaan data peserta dan kelompok.",
+      "long_description": "A web-based administrative system for Metagama's religious mentoring program at POLBAN. Built to digitize participant and group data management — replacing paper-based records with structured CRUD operations. Manages participant registration, group assignments, attendance tracking, and reporting for hundreds of students across multiple mentoring cycles.",
+      "long_description_id": "Sistem administrasi berbasis web untuk program mentoring keagamaan Metagama di POLBAN. Dibangun untuk mendigitalkan pengelolaan data peserta dan kelompok — menggantikan pencatatan berbasis kertas dengan operasi CRUD yang terstruktur. Mengelola pendaftaran peserta, pembagian kelompok, pelacakan kehadiran, dan pelaporan untuk ratusan mahasiswa di beberapa siklus mentoring.",
       "skills": ["Laravel", "PHP", "MySQL", "GitLab", "Docker", "Bootstrap"]
     }
   ],

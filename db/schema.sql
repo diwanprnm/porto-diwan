@@ -74,6 +74,26 @@ CREATE TABLE IF NOT EXISTS project_descriptions (
 -- yang lebih banyak daripada Inggris tidak terpotong saat disimpan.
 ALTER TABLE project_descriptions ADD COLUMN IF NOT EXISTS body_id TEXT NOT NULL DEFAULT '';
 
+-- Deskripsi PANJANG, terpisah dari project_descriptions di atas.
+--
+-- Dua teks dengan peran berbeda: `project_descriptions` adalah ringkasan yang
+-- tampil di kartu section Projects (satu kalimat, tidak dipotong), sedangkan
+-- tabel ini adalah cerita lengkap yang tampil di halaman /projects/<slug>.
+-- Memakai satu tabel untuk keduanya berarti salah satunya selalu jadi bentuk
+-- yang salah — ringkasan panjang, atau detail terpotong.
+--
+-- Bentuknya sengaja identik dengan project_descriptions (satu paragraf per
+-- baris, `body` + `body_id`), jadi aturan dua bahasa dan penyejajaran paragraf
+-- yang sama berlaku: sisi yang lebih pendek diisi string kosong, dan
+-- trimTrailingEmpty membuangnya lagi saat dibaca.
+CREATE TABLE IF NOT EXISTS project_long_descriptions (
+  project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  sort_order INT NOT NULL,
+  body       TEXT NOT NULL,
+  body_id    TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (project_id, sort_order)
+);
+
 CREATE TABLE IF NOT EXISTS project_skills (
   project_id BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   sort_order INT NOT NULL,
