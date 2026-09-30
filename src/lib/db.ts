@@ -9,7 +9,9 @@ import { Pool } from "pg";
 //
 // Di produksi cukup satu Pool biasa.
 declare global {
-  // eslint-disable-next-line no-var
+  // `var` wajib di sini: hanya `var` yang bisa memperluas `globalThis` lewat
+  // augmentasi global. Aturan `no-var` tidak aktif di konfigurasi ESLint ini,
+  // jadi tidak perlu direktif disable (dulu ada dan dilaporkan sebagai unused).
   var __portoPool: Pool | undefined;
 }
 
