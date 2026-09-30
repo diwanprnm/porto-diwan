@@ -21,6 +21,7 @@ import {
   pickLocalized,
   pickLocalizedArray,
   pickLocalizedText,
+  splitProjectTexts,
   trimTrailingEmpty,
 } from "./pure.mjs";
 
@@ -68,7 +69,17 @@ export type Project = {
   github_url: string;
   /** Opsional. Kosong = tombol "Live" tidak dirender, jadi tidak ada link mati. */
   live_url?: string;
+  /**
+   * Ringkasan untuk kartu di section Projects. Satu kalimat, tampil utuh tanpa
+   * dipotong. Cadangannya: paragraf pertama `long_description` (lihat
+   * splitProjectTexts di pure.mjs), jadi project lama tetap punya ringkasan.
+   */
   description: string | string[];
+  /**
+   * Cerita lengkap untuk halaman /projects/<slug>. Cadangannya: seluruh
+   * `description`, dengan alasan yang sama.
+   */
+  long_description?: string | string[];
   skills: string[];
 };
 
@@ -149,6 +160,7 @@ export type ProjectStored = Omit<Project, "slug"> & {
   name_id?: string;
   client_id?: string;
   description_id?: string | string[];
+  long_description_id?: string | string[];
 };
 
 export type LanguageStored = Language & { name_id?: string; level_id?: string };
@@ -203,16 +215,27 @@ export function resolveProfileData(
   // mendapat slug berbeda di tiap bahasa — "metagama-information-system" di
   // Inggris, "sistem-informasi-metagama" di Indonesia. Akibatnya tautan project
   // dari halaman Indonesia 404 di halaman Inggris.
-  const projects: Project[] = withProjectSlugs(stored.projects ?? []).map((p) => ({
-    slug: p.slug,
-    name: pickLocalized(p.name, p.name_id, lang),
-    client: pickLocalized(p.client, p.client_id, lang),
-    image: p.image,
-    github_url: p.github_url,
-    live_url: p.live_url,
-    description: pickLocalizedText(p.description, p.description_id, lang),
-    skills: p.skills ?? [],
-  }));
+  const projects: Project[] = withProjectSlugs(stored.projects ?? []).map((p) => {
+    // Dua peran teks dipisah DI SINI, sekali, supaya halaman publik tinggal
+    // membaca hasilnya dan tidak perlu tahu aturan cadangannya. Lihat
+    // splitProjectTexts di pure.mjs — di sanalah ringkasan jatuh ke paragraf
+    // pertama teks panjang, dan sebaliknya.
+    const texts = splitProjectTexts(
+      pickLocalizedText(p.description, p.description_id, lang),
+      pickLocalizedText(p.long_description, p.long_description_id, lang)
+    );
+    return {
+      slug: p.slug,
+      name: pickLocalized(p.name, p.name_id, lang),
+      client: pickLocalized(p.client, p.client_id, lang),
+      image: p.image,
+      github_url: p.github_url,
+      live_url: p.live_url,
+      description: texts.card,
+      long_description: texts.detail,
+      skills: p.skills ?? [],
+    };
+  });
 
   const languages = stored.languages?.map((l) => ({
     name: pickLocalized(l.name, l.name_id, lang),
@@ -307,6 +330,8 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
     live_url: string;
     descriptions: string[];
     descriptions_id: string[];
+    long_descriptions: string[];
+    long_descriptions_id: string[];
     skills: string[];
   }>(
     `SELECT
@@ -327,6 +352,16 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
             FROM project_descriptions d WHERE d.project_id = p.id),
          '[]'::json
        ) AS descriptions_id,
+       COALESCE(
+         (SELECT json_agg(d.body ORDER BY d.sort_order)
+            FROM project_long_descriptions d WHERE d.project_id = p.id),
+         '[]'::json
+       ) AS long_descriptions,
+       COALESCE(
+         (SELECT json_agg(d.body_id ORDER BY d.sort_order)
+            FROM project_long_descriptions d WHERE d.project_id = p.id),
+         '[]'::json
+       ) AS long_descriptions_id,
        COALESCE(
          (SELECT json_agg(s.name ORDER BY s.sort_order)
             FROM project_skills s WHERE s.project_id = p.id),
@@ -349,6 +384,8 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
     // kosong di belakang. Membuang ekor kosong mengembalikan array aslinya.
     description: trimTrailingEmpty(r.descriptions),
     description_id: trimTrailingEmpty(r.descriptions_id),
+    long_description: trimTrailingEmpty(r.long_descriptions),
+    long_description_id: trimTrailingEmpty(r.long_descriptions_id),
     skills: r.skills,
   }));
 
@@ -476,6 +513,25 @@ export async function saveProfileData(data: ProfileDataStored): Promise<number> 
         await client.query(
           `INSERT INTO project_descriptions (project_id, sort_order, body, body_id) VALUES ($1, $2, $3, $4)`,
           [projectId, d, descEn[d] ?? "", descId[d] ?? ""]
+        );
+      }
+
+      // Teks panjang ditulis dengan pola yang persis sama: hapus lalu isi ulang,
+      // kedua bahasa disejajarkan ke max(panjang_en, panjang_id). Lihat catatan
+      // di atas soal kenapa penyejajaran itu wajib.
+      await client.query("DELETE FROM project_long_descriptions WHERE project_id = $1", [projectId]);
+      const longEn = descToArray(p.long_description ?? "")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const longId = descToArray(p.long_description_id ?? "")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const longRows = Math.max(longEn.length, longId.length);
+
+      for (let d = 0; d < longRows; d++) {
+        await client.query(
+          `INSERT INTO project_long_descriptions (project_id, sort_order, body, body_id) VALUES ($1, $2, $3, $4)`,
+          [projectId, d, longEn[d] ?? "", longId[d] ?? ""]
         );
       }
 

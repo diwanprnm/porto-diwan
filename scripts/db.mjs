@@ -182,6 +182,21 @@ async function main() {
           );
         }
 
+        // Teks panjang (halaman detail), pola penyejajaran yang sama.
+        const longEn = descToArray(p.long_description ?? "")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const longId = descToArray(p.long_description_id ?? "")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        for (let d = 0; d < Math.max(longEn.length, longId.length); d++) {
+          await client.query(
+            `INSERT INTO project_long_descriptions (project_id, sort_order, body, body_id) VALUES ($1, $2, $3, $4)`,
+            [projectId, d, longEn[d] ?? "", longId[d] ?? ""]
+          );
+        }
+
         let sOrder = 0;
         for (const name of p.skills ?? []) {
           await client.query(

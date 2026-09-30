@@ -24,7 +24,9 @@ Situs tersedia dalam **dua bahasa: Inggris (`/en`) dan Indonesia (`/id`)**.
 | `/en`, `/id` | Halaman CV per bahasa |
 | `/en/projects/<slug>`, `/id/projects/<slug>` | Detail project per bahasa |
 | `/projects/<slug>` | Redirect ke bahasa default + `/projects/<slug>` (URL sebelum dwibahasa) |
-| `/admin`, `/api/*`, `/healthz` | Tidak ber-locale |
+| `/admin` | Editor CV (profil, pengalaman, skill, dll.) |
+| `/admin/projects` | Pengelolaan project: ringkasan, teks detail, gambar, tech stack |
+| `/api/*`, `/healthz` | Tidak ber-locale |
 
 Locale ditangani `src/middleware.ts`: mengarahkan path tanpa locale ke default,
 dan menitipkan header `x-locale` yang dipakai root layout untuk `<html lang>`.
@@ -93,14 +95,15 @@ khusus untuk invarian ini di `tests/pure.test.mjs`.
 
 ### Mengisi terjemahan
 
-Lewat `/admin`: ada pemilih **English / Indonesia** di atas form. Kolom yang
-netral bahasa (nama, email, URL, nama teknologi) tidak ikut berubah saat pilihan
-diganti. Saat mengisi tab Indonesia, teks Inggrisnya muncul sebagai placeholder
-abu-abu — kolom yang dibiarkan kosong akan memakai teks Inggris itu di situs.
+Lewat `/admin` (dan `/admin/projects` untuk project): ada pemilih **English /
+Indonesia** di atas form. Kolom yang netral bahasa (nama, email, URL, nama
+teknologi) tidak ikut berubah saat pilihan diganti. Saat mengisi tab Indonesia,
+teks Inggrisnya muncul sebagai placeholder abu-abu — kolom yang dibiarkan kosong
+akan memakai teks Inggris itu di situs.
 
 Terjemahan awal ada di `content/profile.json` sebagai kunci `*_id`, dan dipakai
 saat seed database kosong. Kalau database sudah berisi data, seed dilewati —
-isi terjemahannya lewat `/admin`.
+isi terjemahannya lewat `/admin` dan `/admin/projects`.
 
 ## Menjalankan
 
@@ -140,7 +143,8 @@ Lima tabel (`db/schema.sql`):
 |---|---|
 | `images` | Gambar sebagai BLOB (`bytes`) + `mime` + `filename` |
 | `projects` | Satu baris per project; `image_id` menunjuk ke `images` |
-| `project_descriptions` | Paragraf deskripsi, berurutan (`sort_order`) |
+| `project_descriptions` | Paragraf **ringkasan** (kartu), berurutan (`sort_order`) |
+| `project_long_descriptions` | Paragraf **teks lengkap** (halaman detail), berurutan |
 | `project_skills` | Tech stack per project, berurutan |
 | `profile_doc` | Sisanya (profil, contact, education, skills, socials, experience, languages) sebagai satu dokumen JSONB |
 
@@ -148,6 +152,26 @@ Lima tabel (`db/schema.sql`):
 sebagai satu dokumen JSONB karena selalu dibaca dan ditulis sebagai satu
 kesatuan dari admin — memecahnya jadi tabel per entity tidak memberi keuntungan
 dan hanya menambah kode.
+
+### Dua teks sebuah project
+
+Satu project punya dua teks, dan **keduanya muncul di tempat berbeda**:
+
+- `description` — ringkasan satu kalimat untuk **kartu** di section Projects
+  halaman depan. Tampil utuh, tanpa dipotong.
+- `long_description` — cerita lengkap untuk **halaman detail**
+  (`/[lang]/projects/<slug>`).
+
+Keduanya punya **cadangan dua arah** (`splitProjectTexts` di
+`src/lib/pure.mjs`), jadi project lama yang baru punya satu teks tetap tampil di
+kedua tempat: ringkasan kosong → kartu memakai paragraf pertama teks lengkap;
+teks lengkap kosong → halaman detail memakai ringkasan. Aturan itu dijalankan
+sekali di `resolveProfileData`, jadi halaman publik tidak perlu tahu apa-apa.
+
+Keduanya dikelola di **`/admin/projects`** (bagian Projects di `/admin` hanya
+menautkan ke sana). Perlu `npm run db:migrate` sekali untuk membuat tabel
+`project_long_descriptions`; tanpa migrasi itu, halaman detail tetap tampil
+lewat cadangan ke `description`.
 
 ### Mengubah skema
 
@@ -698,7 +722,11 @@ src/app/api/profile        GET   — data untuk admin editor
 src/app/api/profile/update PUT   — simpan perubahan
 src/app/api/settings/      GET   — bahasa default (dibaca middleware) / PUT — ubah
 src/app/api/auth/login     POST  — login admin
-src/app/admin              Panel admin
+src/app/admin              Panel admin CV
+src/app/admin/projects     Panel admin project (ringkasan + teks detail)
+src/app/admin/editor-shared.ts  Helper pelokalan & pembersihan teks, dipakai
+                           kedua panel admin
+src/app/admin/ImageField.tsx    Upload gambar, dipakai kedua panel admin
 content/profile.json       Data awal (sumber seed; tidak dibaca saat runtime)
 ```
 
