@@ -166,10 +166,24 @@ export default function AdminEditor() {
   const updateContact = (k: string, v: string) =>
     setData({ ...data, contact: { ...data.contact, [k]: v } });
 
-  const updateEducation = (k: string, v: string) =>
-    setData({ ...data, education: { ...data.education, [locKey(k)]: v } });
-  const updateEducationNeutral = (k: string, v: string) =>
-    setData({ ...data, education: { ...data.education, [k]: v } });
+  const updateEducation = (i: number, k: string, v: string) => {
+    const education = [...data.education];
+    education[i] = { ...education[i], [locKey(k)]: v };
+    setData({ ...data, education });
+  };
+  // Nama sekolah, periode, dan IPK netral bahasa.
+  const updateEducationNeutral = (i: number, k: string, v: string) => {
+    const education = [...data.education];
+    education[i] = { ...education[i], [k]: v };
+    setData({ ...data, education });
+  };
+  const addEducation = () =>
+    setData({
+      ...data,
+      education: [...data.education, { school: "", degree: "", period: "", gpa: "" }],
+    });
+  const removeEducation = (i: number) =>
+    setData({ ...data, education: data.education.filter((_, idx) => idx !== i) });
 
   // Skills: array {name, category}, satu baris per skill. Kategori dipilih dari
   // dropdown, bukan diketik: halaman depan hanya menggambar tile untuk kategori
@@ -436,25 +450,38 @@ export default function AdminEditor() {
 
         {/* Education */}
         <section className={card + " mt-4"}>
-          <h2 className="text-base font-semibold text-teal-200 mb-3">🎓 Education</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className={label}>School</label>
-              <input className={input} value={data.education.school} onChange={(e) => updateEducationNeutral("school", e.target.value)} />
-            </div>
-            <div>
-              <label className={label}>Period</label>
-              <input className={input} value={data.education.period} onChange={(e) => updateEducationNeutral("period", e.target.value)} />
-            </div>
-            <div>
-              <label className={label}>Degree</label>
-              <input className={input} value={loc(data.education, "degree")} placeholder={ph(data.education, "degree")} onChange={(e) => updateEducation("degree", e.target.value)} />
-            </div>
-            <div>
-              <label className={label}>GPA (optional)</label>
-              <input className={input} value={data.education.gpa} onChange={(e) => updateEducationNeutral("gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
-            </div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-base font-semibold text-teal-200">🎓 Education</h2>
+            <button onClick={addEducation} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded">+ Add</button>
           </div>
+          {data.education.map((edu, i) => (
+            <div key={i} className="bg-slate-900 p-3 rounded-lg mb-3 border border-slate-700">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs text-gray-500">#{i + 1}</span>
+                <button onClick={() => removeEducation(i)} className="text-xs text-red-400 hover:text-red-300">
+                  Remove
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <label className={label}>School</label>
+                  <input className={input} value={edu.school} onChange={(e) => updateEducationNeutral(i, "school", e.target.value)} />
+                </div>
+                <div>
+                  <label className={label}>Period</label>
+                  <input className={input} value={edu.period} onChange={(e) => updateEducationNeutral(i, "period", e.target.value)} />
+                </div>
+                <div>
+                  <label className={label}>Degree</label>
+                  <input className={input} value={loc(edu, "degree")} placeholder={ph(edu, "degree")} onChange={(e) => updateEducation(i, "degree", e.target.value)} />
+                </div>
+                <div>
+                  <label className={label}>GPA (optional)</label>
+                  <input className={input} value={edu.gpa} onChange={(e) => updateEducationNeutral(i, "gpa", e.target.value)} placeholder="e.g. 3.85/4.00" />
+                </div>
+              </div>
+            </div>
+          ))}
         </section>
 
         {/* Skills */}

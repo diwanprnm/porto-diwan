@@ -318,6 +318,20 @@ export function trimTrailingEmpty(arr) {
 }
 
 /**
+ * Riwayat pendidikan boleh berbentuk objek tunggal (dokumen lama) atau array
+ * (sekarang). Pembaca selalu menerima array, jadi bentuk lama tidak perlu
+ * dimigrasikan lebih dulu — dan tidak ada tempat yang menebak sendiri-sendiri.
+ *
+ * @template T
+ * @param {T | T[] | undefined | null} edu
+ * @returns {T[]}
+ */
+export function educationToArray(edu) {
+  if (!edu) return [];
+  return Array.isArray(edu) ? edu : [edu];
+}
+
+/**
  * Apakah pathname ini menunjuk sebuah FILE, bukan sebuah rute halaman?
  *
  * Dipakai middleware untuk memutuskan apakah sebuah request boleh diberi prefiks

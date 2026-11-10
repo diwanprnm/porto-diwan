@@ -28,6 +28,7 @@ import {
   findProjectBySlug,
   slugOf,
   withProjectSlugs,
+  educationToArray,
   pickLocalized,
   pickLocalizedArray,
   pickLocalizedText,
@@ -101,6 +102,26 @@ describe("descToArray", () => {
     // `descToArray(x)[0]` untuk teaser) akan mendapat undefined kalau di sini
     // dikembalikan [].
     assert.deepEqual(descToArray(""), [""]);
+  });
+});
+
+describe("educationToArray", () => {
+  const entry = { school: "POLBAN", degree: "D3", period: "2021 - 2024", gpa: "" };
+
+  test("objek tunggal (dokumen lama) dibungkus jadi array satu elemen", () => {
+    // Dokumen di profile_doc yang tersimpan sebelum pendidikan jadi array masih
+    // berbentuk objek. Kalau tidak dinormalkan, editor memanggil .map atas objek
+    // dan halaman admin crash saat dibuka.
+    assert.deepEqual(educationToArray(entry), [entry]);
+  });
+
+  test("array dikembalikan apa adanya", () => {
+    assert.deepEqual(educationToArray([entry, entry]), [entry, entry]);
+  });
+
+  test("kosong jadi array kosong, bukan [undefined]", () => {
+    assert.deepEqual(educationToArray(undefined), []);
+    assert.deepEqual(educationToArray(null), []);
   });
 });
 
@@ -350,7 +371,9 @@ describe("data seed", () => {
     if (!data.profile?.title_id) missing.push("profile.title_id");
     if (!data.profile?.bio_id) missing.push("profile.bio_id");
     if (!data.profile?.about_id) missing.push("profile.about_id");
-    if (!data.education?.degree_id) missing.push("education.degree_id");
+    (data.education ?? []).forEach((e, i) => {
+      if (!e.degree_id) missing.push(`education[${i}].degree_id`);
+    });
 
     (data.experience ?? []).forEach((e, i) => {
       if (!e.period_id) missing.push(`experience[${i}].period_id`);

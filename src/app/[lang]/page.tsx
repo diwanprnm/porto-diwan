@@ -164,15 +164,27 @@ export default async function Home({
             dirender, jadi barisnya tidak menyisakan lubang. */}
         <section aria-label={dict.detailsAria} className="mb-16">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Education */}
-            <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-              <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
-                {dict.cardEducation}
-              </h3>
-              <p className="text-sm font-medium text-slate-200">{education.school}</p>
-              <p className="text-xs text-slate-400 mt-1">{education.degree}</p>
-              <p className="text-xs text-teal-500 mt-1.5">{education.period}</p>
-            </div>
+            {/* Education — satu kartu, entri ditumpuk di dalamnya. Judul kartu
+                cukup sekali; entri kosong (tanpa sekolah & gelar) dilewati. */}
+            {education.some((e) => e.school || e.degree) && (
+              <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                  {dict.cardEducation}
+                </h3>
+                <div className="space-y-4">
+                  {education
+                    .filter((e) => e.school || e.degree)
+                    .map((e, i) => (
+                      <div key={i} className={i > 0 ? "pt-4 border-t border-slate-800" : ""}>
+                        <p className="text-sm font-medium text-slate-200">{e.school}</p>
+                        <p className="text-xs text-slate-400 mt-1">{e.degree}</p>
+                        <p className="text-xs text-teal-500 mt-1.5">{e.period}</p>
+                        {e.gpa && <p className="text-xs text-slate-500 mt-1">GPA {e.gpa}</p>}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
 
             {/* Languages */}
             {languages && languages.length > 0 && (

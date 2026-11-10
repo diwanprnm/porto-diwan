@@ -18,6 +18,7 @@ import {
   withProjectSlugs,
   imageIdFromUrl,
   imageUrlFromId,
+  educationToArray,
   pickLocalized,
   pickLocalizedArray,
   pickLocalizedText,
@@ -46,6 +47,19 @@ export type Experience = {
   company: string;
   highlights: string[];
   skills: string[];
+};
+
+/**
+ * Satu riwayat pendidikan. Sekarang ARRAY — sebelumnya objek tunggal, dan
+ * dokumen lama di profile_doc masih berbentuk objek; getProfileDataRaw yang
+ * menormalkannya, jadi pembaca lain (resolveProfileData, editor) selalu
+ * menerima array.
+ */
+export type Education = {
+  school: string;
+  degree: string;
+  period: string;
+  gpa: string;
 };
 
 export type Project = {
@@ -110,12 +124,7 @@ export type ProfileData = {
     phone: string;
     website: string;
   };
-  education: {
-    school: string;
-    degree: string;
-    period: string;
-    gpa: string;
-  };
+  education: Education[];
   skills: Skill[];
   socials: Social[];
   experience: Experience[];
@@ -171,9 +180,11 @@ export type CertificationStored = Certification & {
   date_id?: string;
 };
 
-export type ProfileDataStored = Omit<ProfileData, "experience" | "projects" | "languages" | "certifications"> & {
+export type EducationStored = Education & { degree_id?: string };
+
+export type ProfileDataStored = Omit<ProfileData, "experience" | "projects" | "languages" | "certifications" | "education"> & {
   profile: ProfileData["profile"] & { title_id?: string; bio_id?: string; about_id?: string };
-  education: ProfileData["education"] & { degree_id?: string };
+  education: EducationStored[];
   experience: ExperienceStored[];
   projects: ProjectStored[];
   languages?: LanguageStored[];
@@ -258,12 +269,14 @@ export function resolveProfileData(
       about: pickLocalized(stored.profile.about, stored.profile.about_id, lang),
     },
     contact: stored.contact,
-    education: {
-      school: stored.education.school,
-      degree: pickLocalized(stored.education.degree, stored.education.degree_id, lang),
-      period: stored.education.period,
-      gpa: stored.education.gpa,
-    },
+    // Setiap entri dipetakan sendiri: yang diterjemahkan hanya `degree`, sisanya
+    // (nama sekolah, periode, IPK) netral bahasa.
+    education: (stored.education ?? []).map((e) => ({
+      school: e.school,
+      degree: pickLocalized(e.degree, e.degree_id, lang),
+      period: e.period,
+      gpa: e.gpa,
+    })),
     skills: stored.skills ?? [],
     socials: stored.socials ?? [],
     experience,
@@ -389,7 +402,11 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
     skills: r.skills,
   }));
 
-  return { ...docRows[0].doc, projects };
+  // Pendidikan dinormalkan di sini, di satu-satunya pintu baca dokumen, supaya
+  // dokumen lama (education masih objek, bukan array) tampil dan tersimpan
+  // kembali sebagai array. Tanpa ini, editor akan memetakan `.map` atas objek
+  // dan crash saat halaman admin dibuka.
+  return { ...docRows[0].doc, education: educationToArray(docRows[0].doc.education), projects };
 }
 
 /**
