@@ -18,6 +18,11 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Perkakas editor (graft hooks/statusline) yang di-generate dan
+      // di-gitignore, bukan kode proyek. Berkasnya .cjs (CommonJS) sehingga
+      // `require()` di dalamnya benar secara aturan Node, tapi aturan
+      // next/typescript melarangnya — melint ini akan selalu gagal.
+      ".claude/**",
     ],
   },
 ];

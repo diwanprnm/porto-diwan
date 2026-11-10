@@ -1,0 +1,553 @@
+import Image from "next/image";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import SectionNav from "@/app/SectionNav";
+import { SECTIONS, type SectionId } from "@/lib/sections";
+import {
+  DEFAULT_LOCALE,
+  DICT,
+  categoryLabel,
+  format,
+  isLocale,
+  sectionLabels,
+} from "@/lib/i18n";
+import {
+  getProfileData,
+  groupSkillsByCategory,
+  descToArray,
+} from "@/lib/data";
+
+export const dynamic = "force-dynamic";
+
+// Order kategori. Netral bahasa — yang diterjemahkan hanya labelnya, lewat
+// categoryLabel().
+const CAT_ORDER = ["language", "framework", "database", "devops", "concept"];
+
+// Lebar tile per kategori. Peta tetap, disusun supaya kolomnya genap 12:
+// 5+7 lalu 3+6+3. Kategori yang isinya lebih banyak dapat kolom lebih lebar.
+// Kalau isi skill berubah lewat admin, tile-nya tetap aman, cuma bisa
+// menyisakan kolom kosong di baris terakhir.
+const CAT_SPAN: Record<string, string> = {
+  language: "lg:col-span-5",
+  framework: "lg:col-span-7",
+  database: "lg:col-span-3",
+  devops: "lg:col-span-6",
+  concept: "lg:col-span-3",
+};
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}): Promise<Metadata> {
+  const { lang: raw } = await params;
+  const lang = isLocale(raw) ? raw : DEFAULT_LOCALE;
+  const dict = DICT[lang];
+
+  // `alternates.languages` is what tells a search engine these two URLs are the
+  // same page in different languages. Without it the Indonesian page looks like
+  // duplicate English content rather than a translation, and only one of the
+  // two tends to get indexed.
+  return {
+    title: dict.metaTitle,
+    description: dict.metaDescription,
+    alternates: {
+      canonical: `/${lang}`,
+      languages: { en: "/en", id: "/id" },
+    },
+  };
+}
+
+export default async function Home({
+  params,
+}: {
+  params: Promise<{ lang: string }>;
+}) {
+  const { lang: raw } = await params;
+  // Guard, not decoration: this also runs when the route is rendered without
+  // the middleware (a direct render, a test), and an unknown locale must 404
+  // rather than silently render English under a wrong URL.
+  if (!isLocale(raw)) notFound();
+  const lang = raw;
+
+  const dict = DICT[lang];
+  const labels = sectionLabels(lang);
+
+  const data = await getProfileData(lang);
+  const { profile, contact, education, skills, socials, experience, projects, languages, certifications } = data;
+  const skillGroups = groupSkillsByCategory(skills);
+
+  // Bagian yang benar-benar dirender. Certifications hilang saat kosong, jadi
+  // nav tidak boleh menautkan ke anchor yang tidak ada. Sisanya selalu ada.
+  //
+  // `certs` sudah dinormalkan ke array: dokumen lama tidak punya kuncinya, dan
+  // `hasCerts` (boolean) tidak menyempitkan tipe di dalam JSX.
+  const certs = certifications ?? [];
+  const hasCerts = certs.length > 0;
+  const visibleSections: SectionId[] = SECTIONS.map((s) => s.id).filter(
+    (id) => id !== "certifications" || hasCerts
+  );
+
+  return (
+    <div className="flex flex-col lg:flex-row min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white max-w-screen-2xl mx-auto">
+      {/* ── LEFT SIDEBAR ── */}
+      <aside className="lg:w-[380px] w-full lg:sticky lg:top-0 lg:h-screen flex flex-col bg-slate-950/80 backdrop-blur border-r border-slate-800 p-8 lg:overflow-y-auto">
+        {/* Avatar */}
+        <div className="flex flex-col items-center">
+          <div className="relative">
+            <Image
+              src={profile.image}
+              alt={profile.name}
+              width={140}
+              height={140}
+              // Gambar disajikan dari /api/images/[id] dengan cache immutable.
+              // Optimizer Next dilewati supaya isinya tidak diambil ulang tiap
+              // request — lihat catatan di src/lib/db.ts dan api/images/[id].
+              unoptimized
+              className="rounded-2xl shadow-xl ring-2 ring-teal-500/20"
+            />
+            <div className="absolute -bottom-2 -right-2 w-6 h-6 bg-teal-500 rounded-full border-2 border-slate-950" />
+          </div>
+
+          <h1 className="mt-5 text-2xl font-bold text-white tracking-tight">
+            {profile.name}
+          </h1>
+          <h2 className="text-sm text-teal-400 font-medium mt-1">
+            {profile.title}
+          </h2>
+        </div>
+
+        {/* Bio */}
+        <p className="mt-5 text-slate-400 text-sm leading-relaxed text-center px-2">
+          {profile.bio}
+        </p>
+
+        {/* Section nav — rail. Sticky sidebar keeps it on screen while the
+            content column scrolls, so it doubles as a reading position. */}
+        <SectionNav
+          variant="rail"
+          visible={visibleSections}
+          labels={labels}
+          ariaLabel={dict.navAria}
+          navHeading={dict.navSections}
+        />
+      </aside>
+
+      {/* ── RIGHT CONTENT ── */}
+      <main className="flex-1 lg:overflow-y-auto p-6 md:p-10 lg:p-12">
+        {/* Section nav — bar. Below `lg` the sidebar scrolls away with the
+            page, so the nav re-appears pinned to the top of the column. */}
+        <SectionNav
+          variant="bar"
+          visible={visibleSections}
+          labels={labels}
+          ariaLabel={dict.navAria}
+          navHeading={dict.navSections}
+        />
+
+        {/* About */}
+        <section id="about" className="mb-16 scroll-mt-20">
+          <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
+            <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+            {dict.headingAbout}
+          </h3>
+          <p className="text-slate-400 leading-relaxed text-[15px] max-w-3xl">
+            {profile.about}
+          </p>
+        </section>
+
+        {/* Detail — Education, Languages, Connect, Contact. Dulu keempatnya
+            menempel di sidebar kiri; sekarang jadi kartu di kolom konten supaya
+            sidebar cuma mengurus identitas + nav. Grid 1 kolom di mobile,
+            2 kolom dari `sm` ke atas. Kartu yang isinya kosong (Languages) tidak
+            dirender, jadi barisnya tidak menyisakan lubang. */}
+        <section aria-label={dict.detailsAria} className="mb-16">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Education — satu kartu, entri ditumpuk di dalamnya. Judul kartu
+                cukup sekali; entri kosong (tanpa sekolah & gelar) dilewati. */}
+            {education.some((e) => e.school || e.degree) && (
+              <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                  {dict.cardEducation}
+                </h3>
+                <div className="space-y-4">
+                  {education
+                    .filter((e) => e.school || e.degree)
+                    .map((e, i) => (
+                      <div key={i} className={i > 0 ? "pt-4 border-t border-slate-800" : ""}>
+                        <p className="text-sm font-medium text-slate-200">{e.school}</p>
+                        <p className="text-xs text-slate-400 mt-1">{e.degree}</p>
+                        <p className="text-xs text-teal-500 mt-1.5">{e.period}</p>
+                        {e.gpa && <p className="text-xs text-slate-500 mt-1">GPA {e.gpa}</p>}
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* Languages */}
+            {languages && languages.length > 0 && (
+              <div className="reveal reveal-d2 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+                <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                  {dict.cardLanguages}
+                </h3>
+                <div className="space-y-2">
+                  {/* Variabelnya `l`, bukan `lang`: di file ini `lang` sudah
+                      berarti locale, dan memakai nama yang sama di sini akan
+                      membayanginya. Hari ini tidak berakibat apa-apa karena
+                      callback ini tidak memakai locale — tapi begitu ada yang
+                      menambahkan categoryLabel(lang, …) di dalamnya, yang
+                      terbaca adalah objek bahasa, bukan kode locale. */}
+                  {languages.map((l) => (
+                    <div key={l.name} className="flex justify-between items-center text-sm">
+                      <span className="text-slate-300">{l.name}</span>
+                      <span className="text-xs text-teal-400">{l.level}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Connect */}
+            <div className="reveal reveal-d1 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                {dict.cardConnect}
+              </h3>
+              <div className="flex flex-wrap gap-3">
+                {socials.map((s) => (
+                  <a
+                    key={s.platform}
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-slate-800 rounded-lg hover:bg-teal-900/50 transition-colors group"
+                    title={s.platform}
+                  >
+                    <Image
+                      src={s.icon}
+                      alt={s.platform}
+                      width={18}
+                      height={18}
+                      unoptimized
+                      className="opacity-60 group-hover:opacity-100 transition-opacity"
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            {/* Contact */}
+            <div className="reveal reveal-d2 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+              <h3 className="text-xs font-semibold uppercase tracking-widest text-teal-400 mb-3">
+                {dict.cardContact}
+              </h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex items-center gap-2 text-slate-400">
+                  <svg className="w-4 h-4 text-teal-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+                  <span>{contact.location}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4 text-teal-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+                  <a href={`mailto:${contact.email}`} className="text-teal-400 hover:text-teal-300 transition-colors break-all">
+                    {contact.email}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Skills — bento grid, lebar tile mengikuti jumlah isi */}
+        <section id="skills" className="mb-16 scroll-mt-20">
+          <div className="mb-6 flex items-baseline justify-between gap-4">
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+              {dict.headingSkills}
+            </h3>
+            <span className="text-xs text-slate-500 tabular-nums">
+              {format(dict.skillsTotal, { n: skills.length })}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+            {CAT_ORDER.map((cat, idx) => {
+              const items = skillGroups[cat];
+              if (!items || items.length === 0) return null;
+              return (
+                <div
+                  key={cat}
+                  className={`reveal reveal-d${(idx % 3) + 1} ${CAT_SPAN[cat]} h-full rounded-xl border border-slate-800 bg-slate-900/40 p-5 hover:border-teal-500/30`}
+                >
+                  <div className="flex items-baseline justify-between gap-3 mb-3">
+                    <h4 className="text-xs font-semibold uppercase tracking-widest text-teal-400">
+                      {categoryLabel(lang, cat)}
+                    </h4>
+                    <span className="text-xs text-slate-600 tabular-nums">
+                      {items.length}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map((s) => (
+                      <span
+                        key={s.name}
+                        className="px-2.5 py-1 bg-slate-800/60 border border-slate-700/70 rounded-md text-slate-300 text-sm transition-colors hover:border-teal-500/50 hover:text-teal-200"
+                      >
+                        {s.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Experience — Timeline */}
+        <section id="experience" className="mb-16 scroll-mt-20">
+          <h3 className="text-xl font-bold text-white mb-8 flex items-center gap-3">
+            <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+            {dict.headingExperience}
+          </h3>
+          <div className="space-y-0">
+            <div className="relative pl-8 border-l border-slate-700">
+              {experience.map((exp, idx) => (
+                <div key={idx} className="reveal tl-item mb-10 relative group">
+                  {/* Timeline dot */}
+                  <div className="tl-dot absolute -left-[41px] w-3 h-3 rounded-full border-2 border-slate-700 bg-slate-900" />
+
+                  <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-800 hover:border-teal-500/30 transition-colors">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-1 mb-2">
+                      <div>
+                        <h4 className="text-base font-semibold text-white">
+                          {exp.title}
+                        </h4>
+                        <p className="text-sm text-teal-400">{exp.company}</p>
+                      </div>
+                      <span className="text-xs text-slate-500 whitespace-nowrap bg-slate-800 px-2 py-0.5 rounded-full">
+                        {exp.period}
+                      </span>
+                    </div>
+
+                    <ul className="mt-3 space-y-1.5">
+                      {exp.highlights.map((h, i) => (
+                        <li key={i} className="text-sm text-slate-400 pl-4 relative before:content-['▸'] before:absolute before:left-0 before:text-teal-500">
+                          {h}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="flex flex-wrap gap-1.5 mt-4">
+                      {exp.skills.map((skill) => (
+                        <span key={skill} className="px-2 py-0.5 bg-teal-950/50 border border-teal-900/30 rounded text-teal-300 text-xs">
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Projects — card ringkas: screenshot, nama, client, ringkasan
+            description, seluruh tech stack, plus tombol Live/Repo. Cerita
+            lengkapnya (long_description) ada di /[lang]/projects/[slug].
+            Seluruh bagian atas card menuju halaman detail. */}
+        <section id="projects" className="mb-16 scroll-mt-20">
+          <div className="mb-6 flex items-baseline justify-between gap-4">
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+              {dict.headingProjects}
+            </h3>
+            <span className="text-xs text-slate-500 tabular-nums">
+              {format(dict.projectsShipped, { n: projects.length })}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {projects.map((proj, idx) => {
+              // Slug sudah dihitung dari nama INGGRIS di resolveProfileData dan
+              // tidak ikut diterjemahkan, jadi URL project sama di kedua bahasa.
+              // Lihat withProjectSlugs di pure.mjs untuk alasannya.
+              const href = `/${lang}/projects/${proj.slug}`;
+              // Ringkasan, bukan teks panjang: resolveProfileData sudah memilih
+              // mana yang tampil di kartu (description, atau paragraf pertama
+              // long_description kalau ringkasannya belum diisi). Lihat
+              // splitProjectTexts di pure.mjs.
+              const teaser = descToArray(proj.description)[0];
+              // Ada baris tombol atau tidak menentukan padding bawah: tanpa
+              // tombol, blok teks yang harus menutup kartu.
+              const hasActions = Boolean(proj.live_url || proj.github_url);
+
+              return (
+                <article
+                  key={proj.slug}
+                  className={`reveal reveal-d${(idx % 3) + 1} proj-card group flex flex-col rounded-2xl border border-slate-800 bg-slate-900/50 overflow-hidden`}
+                >
+                  {/* Bagian yang bisa diklik menuju halaman detail. Tombol
+                      Live dan Repo sengaja DI LUAR <Link> ini: <a> tidak boleh
+                      bersarang di dalam <a>. */}
+                  <Link href={href} className="proj-link flex-1 flex flex-col">
+                    {/* Screenshot. object-cover + object-top: tinggi kartu
+                        seragam dan bagian atas screenshot (header/nav) ikut. */}
+                    <div className="bg-slate-950 border-b border-slate-800 overflow-hidden">
+                      <Image
+                        src={proj.image}
+                        alt={format(dict.projectImageAlt, { name: proj.name })}
+                        width={640}
+                        height={360}
+                        unoptimized
+                        className="proj-shot h-[200px] w-full object-cover object-top"
+                      />
+                    </div>
+
+                    <div className={`flex flex-1 flex-col p-5 ${hasActions ? "pb-0" : ""}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <h4 className="text-base font-bold text-white leading-snug group-hover:text-teal-300 transition-colors">
+                          {proj.name}
+                        </h4>
+                        <svg
+                          className="w-4 h-4 shrink-0 mt-1 text-slate-600 group-hover:text-teal-400 group-hover:translate-x-0.5 transition"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          aria-hidden="true"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13.5 4.5L21 12l-7.5 7.5M21 12H3" />
+                        </svg>
+                      </div>
+                      {proj.client && (
+                        <p className="text-xs text-slate-500 mt-1">{proj.client}</p>
+                      )}
+
+                      {teaser && (
+                        // Tanpa line-clamp: ringkasannya memang satu kalimat
+                        // utuh, dan memotongnya di tengah kata menyembunyikan
+                        // teks tanpa jejak apa pun.
+                        <p className="mt-3 text-[13px] text-slate-400 leading-relaxed">
+                          {teaser}
+                        </p>
+                      )}
+
+                      {/* Seluruh tech stack, bukan 3 pertama + "+N": daftar
+                          lengkapnya justru yang menunjukkan kemampuan project,
+                          dan menyembunyikannya di balik angka tidak memberi
+                          info apa pun. */}
+                      <div className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-teal-400">
+                        {proj.skills.map((skill, i) => (
+                          <span key={skill} className="flex items-center gap-2">
+                            {i > 0 && <span className="text-slate-700">·</span>}
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </Link>
+
+                  {/* Aksi. Tombol Live hanya dirender kalau live_url terisi,
+                      jadi tidak pernah ada tombol menuju link kosong. Project
+                      tanpa link sama sekali tidak dapat baris aksi. */}
+                  {(proj.live_url || proj.github_url) && (
+                    <div className="mt-auto flex gap-2 p-5 pt-5">
+                      {proj.live_url && (
+                        <a
+                          href={proj.live_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={format(dict.ariaOpenDemo, { name: proj.name })}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 active:translate-y-px text-white text-sm font-medium transition-colors"
+                        >
+                          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M13.5 6H18m0 0v4.5M18 6l-7.5 7.5M9 5.25H6.75A1.5 1.5 0 005.25 6.75v10.5a1.5 1.5 0 001.5 1.5h10.5a1.5 1.5 0 001.5-1.5V15" />
+                          </svg>
+                          {dict.liveDemo}
+                        </a>
+                      )}
+                      {proj.github_url && (
+                        <a
+                          href={proj.github_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={format(dict.ariaOpenCode, { name: proj.name })}
+                          className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 active:translate-y-px text-slate-200 text-sm font-medium border border-slate-700 hover:border-slate-600 transition-colors"
+                        >
+                          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.4-3.9-1.4-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 .1 1.5 1.1 1.5 1.1.9 1.6 2.4 1.1 3 .8.1-.6.4-1.1.7-1.4-2.5-.3-5.1-1.2-5.1-5.4 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.8 0 0 .9-.3 2.9 1.1.8-.2 1.6-.3 2.4-.3s1.6.1 2.4.3c2-1.4 2.9-1.1 2.9-1.1.6 1.4.2 2.5.1 2.8.7.8 1.1 1.7 1.1 2.9 0 4.2-2.6 5.1-5.1 5.4.4.4.7 1 .7 2v2.9c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.65 18.35.5 12 .5z" />
+                          </svg>
+                          {dict.repo}
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Certifications — kartu ringkas: nama, penerbit, tanggal, plus link
+            Verify kalau ada. Sama seperti Languages, bagian ini tidak dirender
+            kalau kosong; dokumen lama bahkan tidak punya kuncinya sama sekali,
+            jadi pengecekan harus tahan undefined. */}
+        {hasCerts && (
+          <section id="certifications" className="mb-16 scroll-mt-20">
+            <div className="mb-6 flex items-baseline justify-between gap-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                <span className="w-8 h-0.5 bg-teal-500 rounded-full" />
+                {dict.headingCerts}
+              </h3>
+              <span className="text-xs text-slate-500 tabular-nums">
+                {format(dict.certsTotal, { n: certs.length })}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {certs.map((cert, idx) => (
+                <div
+                  key={`${cert.name}-${idx}`}
+                  className={`reveal reveal-d${(idx % 3) + 1} flex flex-col rounded-xl border border-slate-800 bg-slate-900/40 p-5 hover:border-teal-500/30 transition-colors`}
+                >
+                  <h4 className="text-base font-semibold text-white leading-snug">
+                    {cert.name}
+                  </h4>
+                  {cert.issuer && (
+                    <p className="text-sm text-teal-400 mt-1">{cert.issuer}</p>
+                  )}
+                  {cert.date && (
+                    <p className="text-xs text-slate-500 mt-1 tabular-nums">
+                      {cert.date}
+                    </p>
+                  )}
+
+                  {/* Link hanya dirender kalau URL-nya terisi, jadi tidak pernah
+                      ada tombol menuju link kosong. */}
+                  {cert.url && (
+                    <a
+                      href={cert.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={format(dict.ariaVerify, { name: cert.name })}
+                      className="mt-4 self-start inline-flex items-center gap-1.5 text-sm text-teal-400 hover:text-teal-300 transition-colors"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.746 3.746 0 0121 12z" />
+                      </svg>
+                      {dict.verifyCredential}
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Footer */}
+        <footer className="text-center text-xs text-slate-600 pt-8 pb-4 border-t border-slate-800">
+          {format(dict.footer, { year: new Date().getFullYear(), name: profile.name })}
+        </footer>
+      </main>
+    </div>
+  );
+}

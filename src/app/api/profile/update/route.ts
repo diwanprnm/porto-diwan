@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { saveProfileData, type ProfileData } from "@/lib/data";
+import { saveProfileData, type ProfileDataStored } from "@/lib/data";
 import { getAdminFromCookie } from "@/lib/auth";
 
 // PUT /api/profile — admin update
@@ -11,7 +11,10 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    const body = (await req.json()) as Omit<ProfileData, "__meta">;
+    // Bentuk tersimpan (dua bahasa), bukan hasil terjemahan — lihat catatan di
+    // getProfileDataRaw. Body datang dari /admin, yang menerimanya dari
+    // GET /api/profile dengan bentuk yang sama.
+    const body = (await req.json()) as Omit<ProfileDataStored, "__meta">;
 
     // saveProfileData menaikkan __meta.version sendiri (dibaca di dalam
     // transaksi) dan menulis semuanya dalam satu transaksi. Nilai __meta dari

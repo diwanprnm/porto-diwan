@@ -13,8 +13,12 @@ import { NextResponse } from "next/server";
 // supaya hijau sama saja dengan tidak ada gerbang.
 //
 // Konektivitas database diuji di tempat yang memang punya database: health check
-// di scripts/deploy-remote.sh menembak "/" setelah deploy, dan "/" membaca
-// database sungguhan.
+// di scripts/deploy-remote.sh menembak "/en" setelah deploy, dan halaman
+// berbahasa itu membaca database sungguhan.
+//
+// Yang ditembak "/en", bukan "/": sejak situs jadi dwibahasa, "/" hanya
+// me-redirect ke /en (lihat src/middleware.ts) dan berhenti sebelum satu baris
+// data dibaca — jadi curl ke sana tidak lagi membuktikan apa pun soal database.
 //
 // `force-dynamic` supaya Next tidak mencoba men-prerender route ini saat build
 // image — build tidak punya akses jaringan apa pun, dan route yang di-prerender

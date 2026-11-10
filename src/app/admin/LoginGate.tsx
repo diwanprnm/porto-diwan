@@ -1,103 +1,65 @@
-/* Hallmark · genre: modern-minimal · macrostructure: Workbench · design-system: design.md · designed-as-app */
-
-"use client";
-
-import { useState, type FormEvent } from "react";
-
 /**
- * Login gate. Client component so the failure state can be reported inline
- * instead of via `alert()`, and so the form still works without JS — it posts
- * to /api/auth/login natively and only upgrades to fetch when hydration runs.
+ * Gerbang login untuk halaman admin (/admin dan /admin/projects).
+ *
+ * Berkas ini sebelumnya berisi versi lain yang memakai token design system
+ * (bg-paper, label-mono, field, btn--primary) yang tidak pernah dikompilasi ke
+ * src/app/globals.css — jadi halaman loginnya tampil tanpa gaya sama sekali.
+ * Versi yang benar-benar dipakai adalah yang dulu ditulis inline di
+ * src/app/admin/page.tsx; itulah yang dipindah ke sini, dan sekarang kedua
+ * halaman admin memakainya, sehingga tidak ada dua gerbang login yang bisa
+ * menyimpang.
+ *
+ * Formnya tetap bekerja tanpa JavaScript: action/method mengirim POST ke
+ * /api/auth/login. Script di bawah hanya memperbaikinya agar gagal login tidak
+ * memuat ulang halaman dan bisa dilaporkan lewat alert.
  */
 export default function LoginGate() {
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setPending(true);
-    setError(null);
-
-    const fd = new FormData(e.currentTarget);
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: fd.get("password") }),
-      });
-      if (res.ok) {
-        window.location.reload();
-        return;
-      }
-      setError(
-        res.status === 401
-          ? "That password was not accepted."
-          : "Login failed. Try again."
-      );
-    } catch {
-      setError("Network error. Check your connection.");
-    }
-    setPending(false);
-  }
-
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-paper px-md">
-      <div className="w-full max-w-sm">
-        <p className="label-mono mb-md">Diwan Purnama · CV</p>
-
-        <div className="rounded-card border border-rule bg-paper-2 p-lg">
-          <h1 className="text-xl">Admin</h1>
-          <p className="mt-2xs text-sm text-ink-2">
-            Sign in to edit the CV content.
-          </p>
-
-          {/* action/method keep the no-JS path working; onSubmit upgrades it
-              to fetch once hydrated, so errors can render inline. */}
-          <form
-            action="/api/auth/login"
-            method="POST"
-            onSubmit={onSubmit}
-            className="mt-lg"
-          >
-            <label htmlFor="admin-password" className="label-mono mb-2xs block">
-              Password
-            </label>
+    <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="bg-slate-900 p-8 rounded-2xl shadow-2xl w-full max-w-md">
+        <h1 className="text-2xl font-bold text-teal-100 mb-2">Admin Login</h1>
+        <p className="text-gray-400 text-sm mb-6">
+          Masukkan password admin untuk mengedit content CV.
+        </p>
+        <form action="/api/auth/login" method="POST" className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-300 mb-1">Password</label>
             <input
-              id="admin-password"
               type="password"
               name="password"
               required
-              autoComplete="current-password"
-              aria-invalid={error ? "true" : undefined}
-              aria-describedby={error ? "admin-password-error" : undefined}
-              className="field"
-              placeholder="••••••••"
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              placeholder="Enter admin password"
             />
-
-            {error && (
-              <p
-                id="admin-password-error"
-                role="alert"
-                className="mt-2xs text-sm text-danger"
-              >
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={pending}
-              className="btn btn--primary mt-md w-full"
-            >
-              {pending ? "Signing in…" : "Sign in"}
-            </button>
-          </form>
-        </div>
-
-        <p className="label-mono mt-md">
-          Set <code className="mono normal-case tracking-normal">ADMIN_PASSWORD_HASH</code>{" "}
-          in the environment.
+          </div>
+          <button
+            type="submit"
+            className="w-full bg-teal-700 hover:bg-teal-600 text-white py-2 rounded-lg transition font-medium"
+          >
+            Login
+          </button>
+        </form>
+        <p className="mt-4 text-xs text-gray-500">
+          Hint: default password adalah <code className="text-teal-300">admin123</code>.
+          Ganti via env <code className="text-teal-300">ADMIN_PASSWORD_HASH</code>.
         </p>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              document.querySelector('form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const fd = new FormData(e.target);
+                const res = await fetch('/api/auth/login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ password: fd.get('password') }),
+                });
+                if (res.ok) { window.location.reload(); }
+                else { alert('Password salah'); }
+              });
+            `,
+          }}
+        />
       </div>
     </div>
   );
