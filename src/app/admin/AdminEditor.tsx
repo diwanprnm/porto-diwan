@@ -21,6 +21,12 @@ import {
 import ImageField from "./ImageField";
 import Link from "next/link";
 
+// Harus sama dengan CAT_ORDER di src/app/[lang]/page.tsx: halaman depan hanya
+// menggambar tile untuk kategori ini. Kategori lain (mis. sisa ketikan bebas
+// dari editor lama) tetap ditampilkan di dropdown sebagai opsi tambahan supaya
+// tidak hilang diam-diam saat disimpan.
+const SKILL_CATEGORIES = ["language", "framework", "database", "devops", "concept"];
+
 export default function AdminEditor() {
   const [data, setData] = useState<ProfileDataStored | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,13 +105,13 @@ export default function AdminEditor() {
     // Rapikan dulu sebelum dikirim. onBlur sudah menjalankan ini untuk kolom
     // yang disentuh, tapi Save bisa ditekan tanpa pernah blur — misalnya diklik
     // langsung setelah mengetik. Tanpa ini, baris/spasi sisa ikut terkirim dan
-    // ikut tersimpan ke database.
-    trimSkills();
+    // ikut tersimpan ke database. Nilai bersihnya dipakai untuk body, bukan
+    // cuma di-set ke state: setData belum tentu sudah berlaku saat fetch mulai.
     try {
       const res = await fetch("/api/profile/update", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, skills: cleanSkills(data.skills) }),
       });
       if (res.ok) {
         const r = await res.json();
@@ -165,38 +171,28 @@ export default function AdminEditor() {
   const updateEducationNeutral = (k: string, v: string) =>
     setData({ ...data, education: { ...data.education, [k]: v } });
 
-  // Skills: array {name, category}. Editor menampilkan "name (category)" per
-  // baris supaya kategori tidak hilang. Sebelumnya field ini digabung jadi satu
-  // input koma dan disimpan sebagai string[] — kalau ditekan Save, seluruh
-  // kategori skill di profile.json ikut hilang dan section Skills di halaman
-  // depan jadi kosong. Format "name (category)" dipertahankan agar kategori
-  // tetap bisa diisi, tapi category tidak wajib: "Docker" saja tetap boleh.
-  //
-  // Perhatikan di sini array-nya BUKAN string[], jadi pemisahan baris tidak bisa
-  // memakai cleanTextArray yang cuma trim + buang kosong: tiap baris masih perlu
-  // dipecah jadi {name, category}. Jadi onChange memakai parse yang sama, tapi
-  // TANPA trim dan TANPA filter(Boolean) — membersihkan di onChange menghapus
-  // karakter yang sedang diketik, persis bug yang sama dengan kolom lain.
-  // Pembersihannya ada di trimSkills, dipanggil dari onBlur.
+  // Skills: array {name, category}, satu baris per skill. Kategori dipilih dari
+  // dropdown, bukan diketik: halaman depan hanya menggambar tile untuk kategori
+  // yang dikenal CAT_ORDER, jadi kategori salah ketik membuat skill itu hilang
+  // diam-diam. Daftar di sini harus sama dengan CAT_ORDER di [lang]/page.tsx.
   //
   // Nama teknologi netral bahasa, jadi daftar ini tidak punya versi Indonesia.
-  const parseSkillLines = (v: string): Skill[] =>
-    v.split("\n").map((line) => {
-      const m = line.match(/^(.*?)\s*\(([^()]*)\)\s*$/);
-      if (m) return { name: m[1], category: m[2] || "concept" };
-      return { name: line, category: "concept" };
-    });
-  const skillsToText = () =>
-    data.skills.map((s) => (s.category ? `${s.name} (${s.category})` : s.name)).join("\n");
-  const setSkills = (v: string) =>
-    setData({ ...data, skills: parseSkillLines(v) });
-  const trimSkills = () =>
-    setData({
-      ...data,
-      skills: parseSkillLines(skillsToText())
-        .map((s) => ({ ...s, name: s.name.trim(), category: s.category.trim() || "concept" }))
-        .filter((s) => s.name),
-    });
+  const updateSkill = (i: number, k: "name" | "category", v: string) => {
+    const skills = [...data.skills];
+    skills[i] = { ...skills[i], [k]: v };
+    setData({ ...data, skills });
+  };
+  const addSkill = () =>
+    setData({ ...data, skills: [...data.skills, { name: "", category: "concept" }] });
+  const removeSkill = (i: number) =>
+    setData({ ...data, skills: data.skills.filter((_, idx) => idx !== i) });
+  // Baris tanpa nama dibuang dan nama di-trim sebelum dikirim. Nilai hasil
+  // pembersihan dikembalikan (bukan cuma di-set) supaya save() mengirim data
+  // yang sudah bersih, bukan state lama — setData belum tentu sudah berlaku.
+  const cleanSkills = (skills: Skill[]): Skill[] =>
+    skills
+      .map((s) => ({ ...s, name: s.name.trim(), category: s.category || "concept" }))
+      .filter((s) => s.name);
 
   // Socials — netral bahasa.
   const updateSocial = (i: number, k: string, v: string) => {
@@ -464,22 +460,35 @@ export default function AdminEditor() {
         {/* Skills */}
         <section className={card + " mb-4"}>
           <h2 className="text-lg font-semibold text-teal-200 mb-3">Skills & Tools</h2>
-          <label className={label}>Comma-separated</label>
-          <textarea
-            className={input}
-            rows={8}
-            value={skillsToText()}
-            onChange={(e) => setSkills(e.target.value)}
-            // Wajib: parseSkillLines di onChange sengaja meninggalkan spasi dan
-            // baris kosong (kalau tidak, ketikan terakhir yang terhapus). Di sini
-            // semuanya dirapikan, setelah tidak ada ketikan yang berjalan.
-            onBlur={trimSkills}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            {data.skills.length} skills. Satu per baris, format{" "}
-            <code>Nama (kategori)</code> — kategori: language, framework, database,
-            devops, concept. Kategori menentukan tile mana yang dipakai di halaman depan.
-            Nama teknologi tidak diterjemahkan, jadi daftar ini sama di kedua bahasa.
+          {data.skills.map((s, i) => (
+            <div key={i} className="flex gap-2 mb-2 items-center">
+              <input
+                className={input}
+                placeholder="Nama, mis. Docker"
+                value={s.name}
+                onChange={(e) => updateSkill(i, "name", e.target.value)}
+                onBlur={(e) => updateSkill(i, "name", e.target.value.trim())}
+              />
+              <select
+                className={input + " max-w-40"}
+                value={s.category}
+                onChange={(e) => updateSkill(i, "category", e.target.value)}
+              >
+                {[...new Set([...SKILL_CATEGORIES, s.category])].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <button onClick={() => removeSkill(i)} className="text-xs text-red-400 hover:text-red-300 shrink-0">
+                Remove
+              </button>
+            </div>
+          ))}
+          <button onClick={addSkill} className="text-sm bg-teal-800 hover:bg-teal-700 px-3 py-1 rounded mt-1">
+            + Add skill
+          </button>
+          <p className="text-xs text-gray-500 mt-2">
+            {data.skills.length} skills. Kategori menentukan tile mana yang dipakai di halaman
+            depan. Nama teknologi tidak diterjemahkan, jadi daftar ini sama di kedua bahasa.
           </p>
         </section>
 
