@@ -15,13 +15,15 @@
     "phone": "",
     "website": ""
   },
-  "education": {
-    "school": "Politeknik Negeri Bandung (POLBAN)",
-    "degree": "Associate Degree (D3) — Computer Engineering",
-    "degree_id": "Ahli Madya (D3) — Teknik Komputer",
-    "period": "2021 - 2024",
-    "gpa": ""
-  },
+  "education": [
+    {
+      "school": "Politeknik Negeri Bandung (POLBAN)",
+      "degree": "Associate Degree (D3) — Computer Engineering",
+      "degree_id": "Ahli Madya (D3) — Teknik Komputer",
+      "period": "2021 - 2024",
+      "gpa": ""
+    }
+  ],
   "skills": [
     {"name": "JavaScript", "category": "language"},
     {"name": "TypeScript", "category": "language"},

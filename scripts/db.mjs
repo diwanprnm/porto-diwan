@@ -221,7 +221,7 @@ async function main() {
             : "",
         },
         contact: data.contact ?? {},
-        education: data.education ?? {},
+        education: data.education ?? [],
         skills: data.skills ?? [],
         socials: (data.socials ?? []).map((s) => ({
           ...s,
