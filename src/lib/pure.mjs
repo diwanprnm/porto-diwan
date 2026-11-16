@@ -148,21 +148,63 @@ export function findProjectBySlug(projects, slug) {
 /**
  * Slug kanonik sebuah project. Memakai `slug` kalau sudah ada.
  *
- * Cadangan ke projectSlug(p.name) penting untuk objek yang belum melewati
- * withProjectSlugs — baris mentah content/profile.json di test, misalnya.
+ * Cadangan ke projectSlug(p.name) penting untuk dua hal: objek yang belum
+ * melewati withProjectSlugs (baris mentah content/profile.json di test), dan
+ * baris database lama yang slug-nya masih kosong.
  *
  * @param {{ slug?: string, name: string }} project
  * @returns {string}
  */
 export function slugOf(project) {
-  return project.slug ?? projectSlug(project.name);
+  return project.slug || projectSlug(project.name);
 }
 
 /**
- * Lampirkan slug kanonik ke tiap project, dihitung dari nama INGGRIS.
+ * Slug unik untuk satu daftar project, urut sesuai array.
  *
- * Dipanggil SEBELUM nama diterjemahkan (lihat resolveProfileData di
- * lib/data.ts). Urutannya itu yang menentukan, bukan isi fungsinya:
+ * `projectSlug` saja tidak cukup sebagai kunci database. `projects.slug` UNIQUE
+ * dan `saveProfileData` memakai `ON CONFLICT (slug) DO UPDATE`, jadi dua project
+ * yang slug-nya sama akan saling MENIMPA tanpa satu pun error — project yang
+ * sudah dibuat hilang, dan jumlahnya tidak pernah bertambah. Dua tabrakan yang
+ * benar-benar terjadi:
+ *
+ *   - nama Inggris belum diisi (project baru yang baru diisi versi Indonesianya)
+ *     → slug "" untuk SEMUA project seperti itu, jadi project baru berikutnya
+ *       menimpa project baru sebelumnya
+ *   - dua nama berbeda sebelum em-dash ("Diarvis — A", "Diarvis — B")
+ *     → keduanya "diarvis"
+ *
+ * Karena itu nama Indonesia dipakai sebagai cadangan saat nama Inggris kosong,
+ * dan tabrakan yang tersisa diberi akhiran -2, -3, ... sesuai urutan. Slug hasil
+ * fungsi ini DISIMPAN ke kolom `slug`, dan pembaca memakai kolom itu apa adanya
+ * (lihat withProjectSlugs), sehingga keduanya tidak bisa berbeda.
+ *
+ * @param {{ name: string, name_id?: string }[]} projects
+ * @returns {string[]}
+ */
+export function projectSlugs(projects) {
+  const seen = new Map();
+  return projects.map((p) => {
+    // "project" untuk project yang belum punya nama sama sekali, supaya slug-nya
+    // tidak berupa string kosong (URL /projects/ yang menunjuk daftar, bukan
+    // halaman detail).
+    const base = projectSlug(p.name || p.name_id || "") || "project";
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base}-${n}`;
+  });
+}
+
+/**
+ * Lampirkan slug kanonik ke tiap project.
+ *
+ * Slug yang sudah ada (dibaca dari kolom `projects.slug`) dipakai apa adanya;
+ * hanya objek tanpa slug — baris mentah content/profile.json — yang dihitung
+ * dari nama. Menghitung ulang selalu akan menyimpang dari yang tersimpan begitu
+ * `projectSlugs` menambahkan akhiran untuk nama yang bertabrakan.
+ *
+ * Untuk objek tanpa slug, dipanggil SEBELUM nama diterjemahkan (lihat
+ * resolveProfileData di lib/data.ts). Urutannya itu yang menentukan:
  *
  *   dari nama Inggris   "Metagama Information System" → "metagama-information-system"
  *   dari terjemahan     "Sistem Informasi Metagama"   → "sistem-informasi-metagama"
@@ -179,7 +221,7 @@ export function slugOf(project) {
  * @returns {(T & { slug: string })[]}
  */
 export function withProjectSlugs(projects) {
-  return projects.map((p) => ({ ...p, slug: projectSlug(p.name) }));
+  return projects.map((p) => ({ ...p, slug: slugOf(p) }));
 }
 
 /**

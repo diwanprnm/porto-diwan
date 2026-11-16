@@ -12,6 +12,7 @@ import { getPool } from "./db";
 // diubah.
 import {
   projectSlug,
+  projectSlugs,
   descToArray,
   groupSkillsByCategory,
   findProjectBySlug,
@@ -72,10 +73,10 @@ export type Project = {
    * punya alamat. Yang mengisinya hanya `withProjectSlugs`, dipanggil di dalam
    * resolveProfileData — jadi setiap `Project` (hasil terjemahan) sudah punya.
    *
-   * `ProjectStored` dan baris mentah content/profile.json TIDAK punya slug:
-   * keduanya dibaca sebelum slug dihitung, dan slug-nya dihitung ulang dari
-   * `name` saat ditulis (lihat saveProfileData). `slugOf` di pure.mjs adalah
-   * pembaca yang aman untuk keduanya — ia jatuh ke projectSlug(project.name).
+   * Sumbernya kolom `projects.slug` kalau ada (hanya kolom itu yang tahu akhiran
+   * pembeda untuk nama yang bertabrakan — lihat projectSlugs), dan perhitungan
+   * dari `name` untuk data yang belum melewati database. `slugOf` di pure.mjs
+   * adalah pembaca yang aman untuk keduanya.
    */
   slug: string;
   client: string;
@@ -160,10 +161,10 @@ export type ExperienceStored = Experience & {
 
 export type ProjectStored = Omit<Project, "slug"> & {
   /**
-   * Slug tidak disimpan di database — selalu dihitung ulang dari `name` saat
-   * dibaca dan saat ditulis. Opsional di sini karena data yang datang dari
-   * editor memang tidak membawanya, dan nilai yang ikut terkirim diabaikan
-   * (lihat saveProfileData: yang dipakai selalu projectSlug(p.name)).
+   * Slug kanonik, dibaca dari kolom `projects.slug` — satu-satunya tempat yang
+   * tahu akhiran pembeda untuk nama yang bertabrakan (lihat projectSlugs di
+   * pure.mjs). Data yang datang dari editor tidak membawanya; saat menulis,
+   * nilainya dihitung ulang (lihat saveProfileData).
    */
   slug?: string;
   name_id?: string;
@@ -334,6 +335,7 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
   // di bawah harus memperlakukan keduanya (number dari hasil imageIdFromUrl,
   // string dari database) sebagai sama.
   const { rows: projRows } = await pool.query<{
+    slug: string;
     name: string;
     name_id: string;
     client: string;
@@ -348,6 +350,7 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
     skills: string[];
   }>(
     `SELECT
+       p.slug,
        p.name,
        p.name_id,
        p.client,
@@ -385,6 +388,10 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
   );
 
   const projects: ProjectStored[] = projRows.map((r) => ({
+    // Slug dibaca dari kolom, bukan dihitung ulang dari nama: hanya kolom itu
+    // yang tahu akhiran pembeda untuk nama yang bertabrakan (lihat
+    // projectSlugs), dan halaman detail harus memakai alamat yang sama.
+    slug: r.slug,
     name: r.name,
     name_id: r.name_id ?? "",
     client: r.client,
@@ -415,6 +422,12 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
  * Menerima bentuk TERSIMPAN (dua bahasa), bukan hasil terjemahan — lihat
  * catatan di getProfileDataRaw soal kenapa itu wajib.
  *
+ * `projects` OPSIONAL: kalau tidak dikirim, tabel projects tidak disentuh sama
+ * sekali. Itu yang dipakai /admin, yang hanya mengedit isi CV dan tidak
+ * menampilkan daftar project — kalau ia ikut mengirim daftar yang dibacanya saat
+ * halaman dibuka, project yang baru ditambahkan lewat /admin/projects akan
+ * terhapus oleh Save di sana.
+ *
  * Dokumen JSONB dan tabel projects ditulis dalam SATU transaksi: kalau ada satu
  * bagian yang gagal, tidak ada yang setengah tersimpan.
  *
@@ -422,7 +435,9 @@ export async function getProfileDataRaw(): Promise<ProfileDataStored> {
  * tanpa rujukan dibersihkan, supaya gambar yang masih dipakai tidak ikut
  * terhapus.
  */
-export async function saveProfileData(data: ProfileDataStored): Promise<number> {
+export async function saveProfileData(
+  data: Omit<ProfileDataStored, "projects"> & { projects?: ProjectStored[] }
+): Promise<number> {
   const pool = getPool();
   const client = await pool.connect();
 
@@ -454,27 +469,32 @@ export async function saveProfileData(data: ProfileDataStored): Promise<number> 
     // masuk akan terhapus (beserta deskripsi & skill-nya lewat ON DELETE
     // CASCADE).
     //
-    // Slug SELALU dihitung dari `p.name` — nama kanonik berbahasa Inggris —
-    // bukan dari nama yang sedang ditampilkan. Kalau memakai `name_id`, URL
-    // /projects/<slug> akan berbeda antar bahasa, dan mengubah terjemahan akan
-    // menghapus lalu membuat ulang baris project (karena slug-nya berubah),
-    // sehingga link lama mati.
+    // Slug dihitung oleh projectSlugs, yang menjamin hasilnya UNIK untuk seluruh
+    // daftar. Itu wajib di sini: `slug` UNIQUE dan INSERT di bawah memakai
+    // ON CONFLICT (slug) DO UPDATE, jadi dua project berslug sama akan saling
+    // MENIMPA tanpa error — project yang sudah dibuat hilang dan jumlahnya tidak
+    // pernah bertambah. Nama Inggris yang masih kosong (project baru yang baru
+    // diisi versi Indonesianya) adalah cara paling mudah mendapat slug kembar;
+    // itu sebabnya nama Indonesia dipakai sebagai cadangan.
     //
     // Konsekuensi yang perlu diketahui: kalau nama project diubah, slug-nya ikut
     // berubah, jadi baris lama terhapus dan URL /projects/<slug> yang lama jadi
     // 404. Sama seperti perilaku versi file-JSON dulu.
-    const incomingSlugs = projects.map((p) => projectSlug(p.name));
+    const list = projects ?? [];
+    const slugs = projectSlugs(list);
 
-    if (incomingSlugs.length > 0) {
-      await client.query(`DELETE FROM projects WHERE slug <> ALL($1::text[])`, [incomingSlugs]);
-    } else {
-      // Tidak ada project sama sekali di data masuk — berarti semuanya dihapus.
-      await client.query("DELETE FROM projects");
+    if (projects) {
+      if (slugs.length > 0) {
+        await client.query(`DELETE FROM projects WHERE slug <> ALL($1::text[])`, [slugs]);
+      } else {
+        // Daftar kosong — berarti semuanya dihapus.
+        await client.query("DELETE FROM projects");
+      }
     }
 
-    for (let i = 0; i < projects.length; i++) {
-      const p = projects[i];
-      const slug = projectSlug(p.name);
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      const slug = slugs[i];
 
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO projects (slug, name, name_id, client, client_id, image_id, github_url, live_url, sort_order)
@@ -571,8 +591,12 @@ export async function saveProfileData(data: ProfileDataStored): Promise<number> 
     // SQL, karena ada dua bentuk rujukan: foreign key (projects.image_id) dan
     // teks URL di dalam dokumen (foto profil + ikon socials). Menghitungnya di
     // sini juga membuat satu sumber kebenaran yang jelas.
+    //
+    // Tanpa `projects` di body, rujukan dari tabel projects TIDAK diketahui —
+    // dan pembersihan dilewati. Kalau tidak, semua gambar project yang lebih tua
+    // dari satu jam akan dianggap yatim dan dihapus oleh Save dari /admin.
     const referenced = new Set<number>();
-    for (const p of projects) {
+    for (const p of list) {
       const id = imageIdFromUrl(p.image);
       if (id !== null) referenced.add(id);
     }
@@ -587,7 +611,10 @@ export async function saveProfileData(data: ProfileDataStored): Promise<number> 
     // `id <> ALL('{}')` bernilai benar untuk semua baris, jadi tanpanya seluruh
     // tabel images akan terhapus. Membiarkan gambar yatim lebih aman daripada
     // menghapus semuanya karena salah hitung rujukan.
-    if (referenced.size > 0) {
+    //
+    // `projects` yang tidak dikirim juga melewati pembersihan: rujukan dari tabel
+    // projects tidak diketahui, jadi gambar project akan terlihat yatim.
+    if (projects && referenced.size > 0) {
       await client.query(
         `DELETE FROM images
           WHERE created_at < now() - interval '1 hour'

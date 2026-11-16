@@ -32,7 +32,7 @@ import pg from "pg";
 // scripts/deploy-remote.sh setiap deploy). Karena itu pure.mjs ikut disalin ke
 // image — lihat dockerfile stage runner. Tanpa itu, migrasi gagal dengan
 // ERR_MODULE_NOT_FOUND, dan kegagalan itu tidak tertangkap smoke test.
-import { projectSlug, descToArray } from "../src/lib/pure.mjs";
+import { projectSlugs, descToArray } from "../src/lib/pure.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -137,7 +137,12 @@ async function main() {
     await client.query("BEGIN");
     try {
       let order = 0;
-      for (const p of data.projects ?? []) {
+      // projectSlugs, bukan projectSlug: aturannya harus sama persis dengan yang
+      // dipakai saveProfileData, kalau tidak slug di database bisa berbeda dari
+      // slug yang dihitung aplikasi dan /projects/<slug> jadi 404.
+      const projects = data.projects ?? [];
+      const slugs = projectSlugs(projects);
+      for (const [index, p] of projects.entries()) {
         const imageUrl = p.image ? urlByOldPath.get(p.image) ?? null : null;
         // image_id diambil dari URL hasil, bukan dari path lama.
         let imageId = null;
@@ -151,7 +156,7 @@ async function main() {
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING id`,
           [
-            projectSlug(p.name),
+            slugs[index],
             p.name,
             p.name_id ?? "",
             p.client ?? "",
