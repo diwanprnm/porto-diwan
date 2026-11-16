@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   projectSlug,
+  projectSlugs,
   descToArray,
   groupSkillsByCategory,
   findProjectBySlug,
@@ -217,6 +218,29 @@ describe("findProjectBySlug", () => {
 
   test("nama lengkap bukan slug yang sah", () => {
     assert.equal(findProjectBySlug(projects, "Diarvis — Regional Asset Management"), undefined);
+  });
+});
+
+describe("projectSlugs", () => {
+  test("nama Inggris kosong memakai nama Indonesia, bukan slug kosong", () => {
+    // Kasus nyata: project baru diisi di tab Indonesia saja. Dengan
+    // projectSlug(p.name) hasilnya "" untuk SEMUA project seperti itu, dan
+    // ON CONFLICT (slug) membuat yang baru menimpa yang lama.
+    assert.deepEqual(
+      projectSlugs([{ name: "", name_id: "Sistem Baru" }, { name: "Telkom Test House" }]),
+      ["sistem-baru", "telkom-test-house"]
+    );
+  });
+
+  test("slug yang bertabrakan diberi akhiran, bukan saling menimpa", () => {
+    assert.deepEqual(
+      projectSlugs([
+        { name: "Diarvis — Regional Asset Management" },
+        { name: "Diarvis — Dashboard" },
+        { name: "diarvis" },
+      ]),
+      ["diarvis", "diarvis-2", "diarvis-3"]
+    );
   });
 });
 

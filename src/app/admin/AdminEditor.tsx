@@ -108,10 +108,16 @@ export default function AdminEditor() {
     // ikut tersimpan ke database. Nilai bersihnya dipakai untuk body, bukan
     // cuma di-set ke state: setData belum tentu sudah berlaku saat fetch mulai.
     try {
+      // `projects` dibuang dari body: halaman ini tidak mengeditnya, dan daftar
+      // yang dibaca saat halaman dibuka bisa sudah basi (project baru dari
+      // /admin/projects) — mengirimnya akan menghapus project tersebut.
+      // saveProfileData hanya menyentuh tabel projects kalau field-nya ada.
+      const body = { ...data, skills: cleanSkills(data.skills) } as Record<string, unknown>;
+      delete body.projects;
       const res = await fetch("/api/profile/update", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...data, skills: cleanSkills(data.skills) }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const r = await res.json();
@@ -270,10 +276,10 @@ export default function AdminEditor() {
   // Projects TIDAK lagi diedit di sini. Pengelolaannya pindah seluruhnya ke
   // /admin/projects supaya tidak ada dua form yang bisa saling menimpa.
   //
-  // `data.projects` tetap dibawa di state dan tetap ikut terkirim saat Save:
-  // saveProfileData menulis dokumen dan tabel projects sebagai satu kesatuan,
-  // jadi menghapus field itu dari body akan menghapus SELURUH project di
-  // database. Yang dihapus hanya UI-nya.
+  // `data.projects` tetap dibaca untuk menampilkan jumlahnya, tapi TIDAK ikut
+  // dikirim saat Save (lihat save()): daftar itu basi begitu ada project baru
+  // dari /admin/projects, dan saveProfileData memperlakukan projects yang tidak
+  // dikirim sebagai "jangan disentuh".
 
   const addSocial = () =>
     setData({ ...data, socials: [...data.socials, { platform: "", url: "", icon: "" }] });

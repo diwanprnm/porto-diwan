@@ -12,9 +12,17 @@ export async function PUT(req: NextRequest) {
 
   try {
     // Bentuk tersimpan (dua bahasa), bukan hasil terjemahan — lihat catatan di
-    // getProfileDataRaw. Body datang dari /admin, yang menerimanya dari
-    // GET /api/profile dengan bentuk yang sama.
-    const body = (await req.json()) as Omit<ProfileDataStored, "__meta">;
+    // getProfileDataRaw. Body datang dari /admin dan /admin/projects, yang
+    // menerimanya dari GET /api/profile dengan bentuk yang sama.
+    //
+    // `projects` OPSIONAL. /admin tidak mengirimnya (lihat save() di sana):
+    // halaman itu tidak menampilkan daftar project, jadi daftar yang dibacanya
+    // saat halaman dibuka sudah basi begitu ada project baru dari tab lain — dan
+    // menyimpannya akan menghapus project tersebut. Tanpa field ini,
+    // saveProfileData tidak menyentuh tabel projects.
+    const body = (await req.json()) as Omit<ProfileDataStored, "__meta" | "projects"> & {
+      projects?: ProfileDataStored["projects"];
+    };
 
     // saveProfileData menaikkan __meta.version sendiri (dibaca di dalam
     // transaksi) dan menulis semuanya dalam satu transaksi. Nilai __meta dari
